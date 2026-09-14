@@ -16,7 +16,6 @@ use std::{io::Read, path::PathBuf};
 
 use anyhow::Result;
 use axum::http::StatusCode;
-use axum::http::header::ACCEPT;
 use axum::response::IntoResponse;
 use clap::Parser;
 use governor::clock::Clock;
@@ -150,35 +149,6 @@ fn response_400_bad_uri() -> axum::response::Response {
         "invalid URI, probably bad percent encoding",
     )
         .into_response()
-}
-
-fn query_requests_json(query: Option<&str>) -> bool {
-    query
-        .into_iter()
-        .flat_map(|query| query.split('&'))
-        .filter_map(|pair| pair.split_once('='))
-        .any(|(key, value)| {
-            key.eq_ignore_ascii_case("format") && value.eq_ignore_ascii_case("json")
-        })
-}
-
-fn accepts_json(headers: &axum::http::HeaderMap) -> bool {
-    headers
-        .get(ACCEPT)
-        .and_then(|value| value.to_str().ok())
-        .into_iter()
-        .flat_map(|value| value.split(','))
-        .filter_map(|value| value.split(';').next())
-        .map(str::trim)
-        .any(|mime| mime.eq_ignore_ascii_case("application/json") || mime.ends_with("+json"))
-}
-
-fn response_format(uri: &axum::http::Uri, headers: &axum::http::HeaderMap) -> ResponseFormat {
-    if query_requests_json(uri.query()) || accepts_json(headers) {
-        ResponseFormat::Json
-    } else {
-        ResponseFormat::Html
-    }
 }
 
 fn response_500(e: impl Debug) -> axum::response::Response {
@@ -322,8 +292,7 @@ async fn main() -> Result<()> {
     );
 
     let app = axum::Router::new()
-        .fallback(async move |ip: real::RealIp, uri: axum::http::Uri, method: axum::http::Method, headers: axum::http::HeaderMap, raw_form: axum::extract::RawForm| -> axum::response::Response {
-            let response_format = response_format(&uri, &headers);
+        .fallback(async move |ip: real::RealIp, uri: axum::http::Uri, method: axum::http::Method, _headers: axum::http::HeaderMap, raw_form: axum::extract::RawForm| -> axum::response::Response {
             let parsed_uri_path = match parse_uri_path(uri.path()) {
                 Ok(p) => p,
                 Err(_) => return response_400_bad_uri(),
@@ -343,7 +312,18 @@ async fn main() -> Result<()> {
                 }
                 Ok(u) => u,
             };
-            let (canonical_uri_path, ncr) = server_uri_path.canonicalize();
+            let html_manual_endpoint = server_uri_path
+                .file()
+                .map(|file| file.as_str().eq_ignore_ascii_case("index.html"))
+                .unwrap_or(false);
+            let manual_endpoint_uri_path = CanonicalUriPath {
+                dirs: server_uri_path.dirs().to_vec(),
+            };
+            let (canonical_uri_path, ncr) = if html_manual_endpoint {
+                (manual_endpoint_uri_path.clone(), false)
+            } else {
+                server_uri_path.canonicalize()
+            };
             needs_canonical_redirect |= ncr;
             if needs_canonical_redirect {
                 return axum::response::Redirect::permanent(&String::from(
@@ -454,71 +434,34 @@ async fn main() -> Result<()> {
                         _ => (StatusCode::METHOD_NOT_ALLOWED, "what u up to?").into_response()
                     }
                 }
-                [] => {
-                    match response_format {
-                        ResponseFormat::Html => {
-                            let html = indices.root_html();
-                            axum::response::Html(
-                                add_header_and_footer(
-                                    &branding,
-                                    &html,
-                                    &car_breadcrumbs(&canonical_uri_path),
-                                    |_| false,
-                                )
-                                .to_string(),
-                            )
-                            .into_response()
-                        }
-                        ResponseFormat::Json => axum::Json(indices.root_json()).into_response(),
-                    }
-                }
+                [] => axum::Json(indices.root_json()).into_response(),
                 [make_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
-                    match response_format {
-                        ResponseFormat::Html => {
-                            let html = match indices.make_html(&make) {
-                                Some(h) => h,
-                                None => return response_404(),
-                            };
-                            axum::response::Html(add_header_and_footer(
-                                &branding,
-                                &html,
-                                &car_breadcrumbs(&canonical_uri_path),
-                                |_| false,
-                            ))
-                            .into_response()
-                        }
-                        ResponseFormat::Json => match indices.make_json(&make) {
-                            Some(response) => axum::Json(response).into_response(),
-                            None => return response_404(),
-                        },
+                    match indices.make_json(&make) {
+                        Some(response) => axum::Json(response).into_response(),
+                        None => response_404(),
                     }
                 }
                 [make_str, year_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
                     let year = Year::new(year_str.decode_uri_component().0.to_string());
-                    match response_format {
-                        ResponseFormat::Html => {
-                            let html = match indices.make_year_html(&make, &year) {
-                                Some(h) => h,
-                                None => return response_404(),
-                            };
-                            axum::response::Html(add_header_and_footer(
-                                &branding,
-                                &html,
-                                &car_breadcrumbs(&canonical_uri_path),
-                                |_| false,
-                            ))
-                            .into_response()
-                        }
-                        ResponseFormat::Json => match indices.make_year_json(&make, &year) {
-                            Some(response) => axum::Json(response).into_response(),
-                            None => return response_404(),
-                        },
+                    match indices.make_year_json(&make, &year) {
+                        Some(response) => axum::Json(response).into_response(),
+                        None => response_404(),
                     }
                 }
                 _ => {
-                    let car_uri_components = &canonical_uri_path
+                    let response_format = if html_manual_endpoint {
+                        ResponseFormat::Html
+                    } else {
+                        ResponseFormat::Json
+                    };
+                    let request_uri_path = if html_manual_endpoint {
+                        manual_endpoint_uri_path
+                    } else {
+                        canonical_uri_path
+                    };
+                    let car_uri_components = &request_uri_path
                         .extract_car_uri_components()
                         .expect("Guaranteed to have at least three parts in this match branch");
                     let matched_database =
@@ -528,7 +471,7 @@ async fn main() -> Result<()> {
                         };
                     tokio::task::spawn_blocking(move || {
                         matched_database
-                            .handle_car_request(canonical_uri_path, response_format)
+                            .handle_car_request(request_uri_path, response_format)
                             .unwrap_or_else(|e| {
                                 Some(response_500(e.context("Handle car request error")))
                             })
@@ -593,26 +536,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn query_parameter_can_request_json() {
-        assert!(query_requests_json(Some("format=json")));
-        assert!(query_requests_json(Some("foo=bar&format=json")));
-        assert!(!query_requests_json(Some("format=html")));
-        assert!(!query_requests_json(None));
-    }
-
-    #[test]
-    fn accept_header_can_request_json() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(ACCEPT, "application/json".parse().unwrap());
-        assert!(accepts_json(&headers));
-
-        headers.insert(
-            ACCEPT,
-            "text/html, application/problem+json".parse().unwrap(),
-        );
-        assert!(accepts_json(&headers));
-
-        headers.insert(ACCEPT, "text/html".parse().unwrap());
-        assert!(!accepts_json(&headers));
+    fn bad_uris_still_get_400() {
+        assert_eq!(response_400_bad_uri().status(), StatusCode::BAD_REQUEST);
     }
 }

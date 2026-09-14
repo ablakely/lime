@@ -1,20 +1,27 @@
-use std::{hash::Hash, io::Write};
+use std::{hash::Hash, io::Write, sync::LazyLock};
 
 use anyhow::{Result, anyhow, bail};
 use axum::{http::StatusCode, response::IntoResponse};
 use elsa::FrozenMap;
 use plait::{HtmlDisplay, html};
+use regex::Regex;
 use serde::Deserialize;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
-    types::{ApiBreadcrumb, Year},
+    types::{ApiBreadcrumb, NamedUri, Year},
     uri_path::{
-        AbsoluteUriPath, CarUriComponents, ServerUriPath, UriComponent, UriPath,
+        AbsoluteUriPath, CanonicalUriPath, CarUriComponents, ServerUriPath, UriComponent, UriPath,
         car_uri_path_string_to_car_uri_components, parse_uri_path,
     },
     zipper::{AbsoluteAdjustedUri, AbsoluteOriginalUri},
 };
+
+static A_HREF_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r##"(?is)<a[^>]*href=['"]([^'"#]+)(?:#[^'"]*)?['"][^>]*>(.*?)</a>"##).unwrap()
+});
+static STRIP_HTML_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<[^>]+>").unwrap());
 
 pub fn deserialize_years<'de, D>(deserializer: D) -> Result<Vec<Year>, D::Error>
 where
@@ -159,6 +166,43 @@ pub fn breadcrumbs_to_topics(breadcrumbs: &[Breadcrumb]) -> Vec<String> {
         .skip(3)
         .map(|(label, _)| label.decode_uri_component().0.into_owned())
         .collect()
+}
+
+pub fn manual_links_from_html(current_uri: &CanonicalUriPath, html: &str) -> Vec<NamedUri> {
+    let mut links = Vec::new();
+    for captures in A_HREF_REGEX.captures_iter(html) {
+        let href = captures.get(1).unwrap().as_str();
+        if !href.starts_with('/') {
+            continue;
+        }
+        let Ok(parsed_href) = parse_uri_path(href) else {
+            continue;
+        };
+        let Ok((parsed_href, _)) = parsed_href.reencode_properly() else {
+            continue;
+        };
+        if parsed_href.file.is_some() || !parsed_href.is_absolute {
+            continue;
+        }
+        if parsed_href.dirs.len() <= current_uri.dirs.len()
+            || !parsed_href.dirs.starts_with(current_uri.dirs())
+        {
+            continue;
+        }
+        let label = STRIP_HTML_REGEX
+            .replace_all(captures.get(2).unwrap().as_str(), "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if label.is_empty() || links.iter().any(|link: &NamedUri| link.uri == href) {
+            continue;
+        }
+        links.push(NamedUri {
+            name: label,
+            uri: href.to_string(),
+        });
+    }
+    links
 }
 
 /// Precondition: breadcrumbs nonempty
@@ -336,6 +380,30 @@ mod test {
         assert_eq!(
             breadcrumbs_to_topics(&breadcrumbs),
             vec!["Repair and Diagnosis", "Engine"]
+        );
+    }
+
+    #[test]
+    fn manual_links_from_html_keeps_descendant_manual_paths() {
+        let current_uri = CanonicalUriPath {
+            dirs: vec![
+                UriComponent::unsafe_from_encoded_str("Buick"),
+                UriComponent::unsafe_from_encoded_str("2012"),
+                UriComponent::unsafe_from_encoded_str("LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203"),
+                UriComponent::unsafe_from_encoded_str("Repair%20and%20Diagnosis"),
+            ],
+        };
+        let html = r#"
+            <a href="/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/Repair%20and%20Diagnosis/Engine/">Engine</a>
+            <a href="/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/">Vehicle Root</a>
+            <a href="/about.html">About</a>
+        "#;
+        assert_eq!(
+            manual_links_from_html(&current_uri, html),
+            vec![NamedUri {
+                name: "Engine".to_string(),
+                uri: "/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/Repair%20and%20Diagnosis/Engine/".to_string(),
+            }]
         );
     }
 }

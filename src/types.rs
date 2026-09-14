@@ -134,37 +134,43 @@ pub struct ApiBreadcrumb {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct RootResponse {
-    pub makes: Vec<String>,
-    pub breadcrumbs: Vec<ApiBreadcrumb>,
+pub struct NamedUri {
+    pub name: String,
+    pub uri: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct MakeResponse {
-    pub make: String,
-    pub years: Vec<String>,
-    pub breadcrumbs: Vec<ApiBreadcrumb>,
+pub struct YearUri {
+    pub year: String,
+    pub uri: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EngineUri {
+    pub name: String,
+    pub uri: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MakeYearModelResponse {
     pub model: String,
-    pub engines: Vec<String>,
+    pub uri: Option<String>,
+    pub engines: Vec<EngineUri>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct MakeYearDatabaseResponse {
-    pub name: String,
-    pub info_html: String,
-    pub models: Vec<MakeYearModelResponse>,
+pub struct RootResponse {
+    pub makes: Vec<NamedUri>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MakeResponse {
+    pub years: Vec<YearUri>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MakeYearResponse {
-    pub make: String,
-    pub year: String,
-    pub databases: Vec<MakeYearDatabaseResponse>,
-    pub breadcrumbs: Vec<ApiBreadcrumb>,
+    pub models: Vec<MakeYearModelResponse>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -173,4 +179,5 @@ pub struct ManualPageResponse {
     pub content: String,
     pub breadcrumbs: Vec<ApiBreadcrumb>,
     pub topics: Vec<String>,
+    pub manuals: Vec<NamedUri>,
 }
