@@ -1,5 +1,6 @@
 use crate::{
     common::SenderWriter,
+    json_responses::ManualPageResponse,
     types::{DatabaseMachineName, Make, Year},
     uri_path::{CanonicalUriPath, CarUriComponents},
 };
@@ -19,6 +20,11 @@ pub trait DatabaseEngine: Sync + Send {
         &self,
         uri_path: CanonicalUriPath,
     ) -> Result<Option<axum::response::Response>>;
+    // New method: return manual page as JSON
+    fn handle_car_request_json(
+        &self,
+        uri_path: CanonicalUriPath,
+    ) -> Result<Option<ManualPageResponse>>;
     // called inside spawn_blocking
     fn handle_bundle_request(
         &self,
