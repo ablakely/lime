@@ -1,5 +1,5 @@
-use std::{env, str};
 use std::fs::File;
+use std::{env, str};
 
 use memmap::Mmap;
 use oxidized_mtbl::Reader;

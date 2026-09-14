@@ -1,6 +1,6 @@
-use std::mem;
-use byteorder::{LittleEndian, WriteBytesExt};
 use crate::varint::varint_encode32;
+use byteorder::{LittleEndian, WriteBytesExt};
+use std::mem;
 
 #[derive(Clone)]
 pub struct BlockBuilder {
@@ -54,7 +54,12 @@ impl BlockBuilder {
 
         // see how much sharing to do with previous key
         if self.counter < self.block_restart_interval {
-            shared = self.last_key.iter().zip(key).take_while(|(l, k)| l == k).count();
+            shared = self
+                .last_key
+                .iter()
+                .zip(key)
+                .take_while(|(l, k)| l == k)
+                .count();
         } else {
             // restart compression
             self.restarts.push(self.buf.len() as u64);
@@ -68,9 +73,12 @@ impl BlockBuilder {
 
         // add "[shared][non-shared][value length]" to buffer
         let mut buf = [0; 10];
-        self.buf.extend_from_slice(varint_encode32(&mut buf, shared as u32));
-        self.buf.extend_from_slice(varint_encode32(&mut buf, non_shared as u32));
-        self.buf.extend_from_slice(varint_encode32(&mut buf, val.len() as u32));
+        self.buf
+            .extend_from_slice(varint_encode32(&mut buf, shared as u32));
+        self.buf
+            .extend_from_slice(varint_encode32(&mut buf, non_shared as u32));
+        self.buf
+            .extend_from_slice(varint_encode32(&mut buf, val.len() as u32));
 
         // add key suffix to buffer followed by value
         self.buf.extend_from_slice(&key[shared..]);

@@ -63,7 +63,7 @@ pub fn decompress(type_: CompressionType, data: &[u8]) -> io::Result<Cow<'_, [u8
         other => {
             let error = format!("unsupported {:?} decompression", other);
             Err(io::Error::new(io::ErrorKind::Other, error))
-        },
+        }
     }
 }
 
@@ -76,7 +76,7 @@ pub fn compress(type_: CompressionType, level: u32, data: &[u8]) -> io::Result<C
         other => {
             let error = format!("unsupported {:?} decompression", other);
             Err(io::Error::new(io::ErrorKind::Other, error))
-        },
+        }
     }
 }
 
@@ -93,7 +93,10 @@ fn zlib_decompress(data: &[u8]) -> io::Result<Cow<'_, [u8]>> {
 
 #[cfg(not(feature = "zlib"))]
 fn zlib_decompress(_data: &[u8]) -> io::Result<Cow<'_, [u8]>> {
-    Err(io::Error::new(io::ErrorKind::Other, "unsupported zlib decompression"))
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "unsupported zlib decompression",
+    ))
 }
 
 #[cfg(feature = "zlib")]
@@ -107,7 +110,10 @@ fn zlib_compress(data: &[u8], level: u32) -> io::Result<Cow<'_, [u8]>> {
 
 #[cfg(not(feature = "zlib"))]
 fn zlib_compress(_data: &[u8], _level: u32) -> io::Result<Cow<'_, [u8]>> {
-    Err(io::Error::new(io::ErrorKind::Other, "unsupported zlib compression"))
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "unsupported zlib compression",
+    ))
 }
 
 // --------- snappy ---------
@@ -115,23 +121,35 @@ fn zlib_compress(_data: &[u8], _level: u32) -> io::Result<Cow<'_, [u8]>> {
 #[cfg(feature = "snappy")]
 fn snappy_decompress(data: &[u8]) -> io::Result<Cow<'_, [u8]>> {
     let mut decoder = snap::raw::Decoder::new();
-    decoder.decompress_vec(data).map_err(Into::into).map(Cow::Owned)
+    decoder
+        .decompress_vec(data)
+        .map_err(Into::into)
+        .map(Cow::Owned)
 }
 
 #[cfg(not(feature = "snappy"))]
 fn snappy_decompress(_data: &[u8]) -> io::Result<Cow<'_, [u8]>> {
-    Err(io::Error::new(io::ErrorKind::Other, "unsupported snappy decompression"))
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "unsupported snappy decompression",
+    ))
 }
 
 #[cfg(feature = "snappy")]
 fn snappy_compress(data: &[u8], _level: u32) -> io::Result<Cow<'_, [u8]>> {
     let mut decoder = snap::raw::Encoder::new();
-    decoder.compress_vec(data).map_err(Into::into).map(Cow::Owned)
+    decoder
+        .compress_vec(data)
+        .map_err(Into::into)
+        .map(Cow::Owned)
 }
 
 #[cfg(not(feature = "snappy"))]
 fn snappy_compress(_data: &[u8], _level: u32) -> io::Result<Cow<'_, [u8]>> {
-    Err(io::Error::new(io::ErrorKind::Other, "unsupported snappy compression"))
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "unsupported snappy compression",
+    ))
 }
 
 // --------- zstd ---------
@@ -145,7 +163,10 @@ fn zstd_decompress(data: &[u8]) -> io::Result<Cow<'_, [u8]>> {
 
 #[cfg(not(feature = "zstd"))]
 fn zstd_decompress(_data: &[u8]) -> io::Result<Cow<'_, [u8]>> {
-    Err(io::Error::new(io::ErrorKind::Other, "unsupported zstd decompression"))
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "unsupported zstd decompression",
+    ))
 }
 
 #[cfg(feature = "zstd")]
@@ -157,5 +178,8 @@ fn zstd_compress(data: &[u8], level: u32) -> io::Result<Cow<'_, [u8]>> {
 
 #[cfg(not(feature = "zstd"))]
 fn zstd_compress(_data: &[u8], _level: u32) -> io::Result<Cow<'_, [u8]>> {
-    Err(io::Error::new(io::ErrorKind::Other, "unsupported zstd compression"))
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "unsupported zstd compression",
+    ))
 }

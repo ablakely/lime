@@ -172,4 +172,5 @@ pub struct ManualPageResponse {
     pub title: String,
     pub content: String,
     pub breadcrumbs: Vec<ApiBreadcrumb>,
+    pub topics: Vec<String>,
 }

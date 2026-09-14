@@ -14,8 +14,8 @@ use serde::Deserialize;
 use crate::{
     common::{
         Breadcrumb, ImageType, SenderWriter, SiteBranding, aau_404, add_header_and_footer, aou_404,
-        aup_404, breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, image_bytes_to_response,
-        make_zip_static_files,
+        aup_404, breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, breadcrumbs_to_topics,
+        image_bytes_to_response, make_zip_static_files,
     },
     database_engines::{DatabaseEngine, ResponseFormat},
     kv_store::{KVKey, KVStore, KVStoreCache},
@@ -286,6 +286,7 @@ impl Charm {
                 breadcrumbs_need_more_context_predicate,
             ),
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&breadcrumbs),
+            topics: breadcrumbs_to_topics(&breadcrumbs),
         })
     }
 

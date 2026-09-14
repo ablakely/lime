@@ -153,6 +153,14 @@ pub fn breadcrumbs_to_api_breadcrumbs(breadcrumbs: &[Breadcrumb]) -> Vec<ApiBrea
         .collect()
 }
 
+pub fn breadcrumbs_to_topics(breadcrumbs: &[Breadcrumb]) -> Vec<String> {
+    breadcrumbs
+        .iter()
+        .skip(3)
+        .map(|(label, _)| label.decode_uri_component().0.into_owned())
+        .collect()
+}
+
 /// Precondition: breadcrumbs nonempty
 fn breadcrumbs_to_car_name(breadcrumbs: &[Breadcrumb]) -> String {
     match breadcrumbs {
@@ -270,6 +278,65 @@ pub fn english_list<S: AsRef<str>>(list: &[S]) -> String {
             }
             result
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::uri_path::{AbsoluteUriPath, UriComponent};
+
+    fn absolute_path(dirs: &[&str]) -> AbsoluteUriPath {
+        AbsoluteUriPath {
+            dirs: dirs
+                .iter()
+                .map(|dir| UriComponent::unsafe_from_encoded_str(dir))
+                .collect(),
+            file: None,
+            fragment: None,
+        }
+    }
+
+    #[test]
+    fn breadcrumbs_to_topics_skips_car_identity() {
+        let breadcrumbs = vec![
+            (
+                UriComponent::unsafe_from_encoded_str("Chevrolet"),
+                absolute_path(&["Chevrolet"]),
+            ),
+            (
+                UriComponent::unsafe_from_encoded_str("2003"),
+                absolute_path(&["Chevrolet", "2003"]),
+            ),
+            (
+                UriComponent::unsafe_from_encoded_str("Suburban%20C2500%2C%208.1%20G"),
+                absolute_path(&["Chevrolet", "2003", "Suburban%20C2500%2C%208.1%20G"]),
+            ),
+            (
+                UriComponent::unsafe_from_encoded_str("Repair%20and%20Diagnosis"),
+                absolute_path(&[
+                    "Chevrolet",
+                    "2003",
+                    "Suburban%20C2500%2C%208.1%20G",
+                    "Repair%20and%20Diagnosis",
+                ]),
+            ),
+            (
+                UriComponent::unsafe_from_encoded_str("Engine"),
+                absolute_path(&[
+                    "Chevrolet",
+                    "2003",
+                    "Suburban%20C2500%2C%208.1%20G",
+                    "Repair%20and%20Diagnosis",
+                    "Engine",
+                ]),
+            ),
+        ];
+
+        assert_eq!(
+            breadcrumbs_to_topics(&breadcrumbs),
+            vec!["Repair and Diagnosis", "Engine"]
+        );
     }
 }
 

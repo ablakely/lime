@@ -13,8 +13,8 @@ use serde::Deserialize;
 
 use crate::common::{
     Breadcrumb, ImageType, SenderWriter, SiteBranding, aau_404, add_header_and_footer, aou_404,
-    breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, english_list, get_or_compute,
-    image_bytes_to_response, make_zip_static_files,
+    breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, breadcrumbs_to_topics, english_list,
+    get_or_compute, image_bytes_to_response, make_zip_static_files,
 };
 use crate::database_engines::{DatabaseEngine, ResponseFormat};
 use crate::kv_store::{KVKey, KVStore, KVStoreCache};
@@ -613,6 +613,7 @@ impl Lemon {
                 page_db_bytes,
             )?,
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&page.breadcrumbs),
+            topics: breadcrumbs_to_topics(&page.breadcrumbs),
         })
     }
 

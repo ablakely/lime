@@ -20,9 +20,8 @@ pub struct AbsoluteAdjustedUri(pub AbsoluteUriPath);
 pub struct RelativeAdjustedUri(pub RelativeUriPath);
 
 pub trait ZipCore: Sized {
-   
     type AdjustCtx;
-   
+
     type WriteCtx;
 
     fn adjust_uri(
@@ -41,16 +40,15 @@ pub trait ZipCore: Sized {
 pub struct Zipper<ZC: ZipCore, W: Write> {
     zip_writer: zip::ZipWriter<zip::write::StreamWriter<W>>,
     core: ZC,
-   
+
     adjustments: HashMap<AbsoluteOriginalUri, AbsoluteAdjustedUri>,
     base_folder_name: String,
     written_page_count: u64,
 }
 
 struct WriteQueueItem<ZC: ZipCore> {
-   
     absolute_original_uri: AbsoluteOriginalUri,
-   
+
     absolute_adjusted_uri: AbsoluteAdjustedUri,
     ctx: ZC::WriteCtx,
 }
@@ -58,7 +56,7 @@ struct WriteQueueItem<ZC: ZipCore> {
 pub struct ScopedZipper<'a, ZC: ZipCore> {
     adjustments: &'a mut HashMap<AbsoluteOriginalUri, AbsoluteAdjustedUri>,
     queue: &'a mut Vec<WriteQueueItem<ZC>>,
-   
+
     core: &'a ZC,
     absolute_original_uri: AbsoluteOriginalUri,
     absolute_adjusted_uri: AbsoluteAdjustedUri,
@@ -77,7 +75,6 @@ impl<'a, ZC: ZipCore> ScopedZipper<'a, ZC> {
         absolute_original_uri: AbsoluteOriginalUri,
         ctx: ZC::AdjustCtx,
     ) -> RelativeAdjustedUri {
-       
         match self.adjustments.get(&absolute_original_uri) {
             Some(absolute_adjusted_uri) => RelativeAdjustedUri(absolute_to_relative(
                 &self.absolute_adjusted_uri.0,
@@ -92,7 +89,6 @@ impl<'a, ZC: ZipCore> ScopedZipper<'a, ZC> {
                             return RelativeAdjustedUri(RelativeUriPath {
                                 dirs: vec![],
                                 file: Some(
-                                   
                                     UriComponent::from_decoded_str("adjust_uri_error.html")
                                         .unwrap(),
                                 ),
@@ -109,7 +105,7 @@ impl<'a, ZC: ZipCore> ScopedZipper<'a, ZC> {
                         ctx: write_ctx,
                     });
                 }
-               
+
                 RelativeAdjustedUri(absolute_to_relative(
                     &self.absolute_adjusted_uri.0,
                     &absolute_adjusted_uri.0,
@@ -152,7 +148,7 @@ impl<ZC: ZipCore, W: Write> Zipper<ZC, W> {
                             continue 'write_dequeue_loop;
                         }
                     };
-               
+
                 self.write(&write_queue_item.absolute_adjusted_uri, &bytes, compress)?;
             }
         }
@@ -181,7 +177,6 @@ impl<ZC: ZipCore, W: Write> Zipper<ZC, W> {
         Ok(())
     }
 
-   
     pub fn explicit_adjustment(
         &mut self,
         aou: AbsoluteOriginalUri,
@@ -210,10 +205,7 @@ impl<ZC: ZipCore, W: Write> Zipper<ZC, W> {
                 zip::CompressionMethod::STORE
             })
             .last_modified_time(zip::DateTime::from_date_and_time(2026, 3, 1, 0, 0, 0).unwrap());
-       
-       
-       
-       
+
         let string_file_path =
             self.base_folder_name.clone() + &String::from(absolute_adjusted_uri.0.stringify());
         self.zip_writer.start_file(string_file_path, options)?;

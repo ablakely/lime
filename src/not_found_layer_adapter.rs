@@ -68,7 +68,6 @@ where
     }
 
     fn call(&mut self, req: axum::extract::Request) -> Self::Future {
-       
         let (head, body) = req.into_parts();
         let min_req = Request::from_parts(head.clone(), ());
         let req = axum::extract::Request::from_parts(head, body);

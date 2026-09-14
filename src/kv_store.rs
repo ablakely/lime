@@ -1,5 +1,3 @@
-
-
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::{cell::RefCell, path::Path};
@@ -24,17 +22,14 @@ pub enum KVStore {
     },
 }
 
-
 #[derive(Debug, Clone)]
 pub struct KVStoreCache {
-   
     mtbl_cache: RefCell<oxidized_mtbl::BlockCache>,
 }
 
 impl KVStoreCache {
     pub fn new() -> Self {
         Self {
-           
             mtbl_cache: RefCell::new(oxidized_mtbl::BlockCache::new(
                 NonZeroUsize::new(1024).unwrap(),
             )),

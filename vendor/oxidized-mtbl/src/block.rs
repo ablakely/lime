@@ -19,7 +19,8 @@ impl<A: AsRef<[u8]>> Block<A> {
         if data.len() < mem::size_of::<u32>() {
             return None;
         } else {
-            restart_offset = data.len() - (1 + num_restarts(data.as_ref()) as usize) * mem::size_of::<u32>();
+            restart_offset =
+                data.len() - (1 + num_restarts(data.as_ref()) as usize) * mem::size_of::<u32>();
         }
 
         // Check if a 32-bit restart array would leave room for restart offsets
@@ -27,9 +28,9 @@ impl<A: AsRef<[u8]>> Block<A> {
         // same check, and will switch to 64 bit restart offsets if necessary.
         // We detect this situation here, and do the same.
         if restart_offset > u32::max_value() as usize {
-            restart_offset = data.len() - (
-                mem::size_of::<u32>() + num_restarts(data.as_ref()) as usize * mem::size_of::<u64>()
-            );
+            restart_offset = data.len()
+                - (mem::size_of::<u32>()
+                    + num_restarts(data.as_ref()) as usize * mem::size_of::<u64>());
             // b->restart_offset is the offset of the first byte after
             // the entries stored in the block. If that offset fits
             // in a 32 bit unsigned integer field, the block should have
@@ -45,7 +46,10 @@ impl<A: AsRef<[u8]>> Block<A> {
             return None;
         }
 
-        Some(Block { data, restart_offset: restart_offset as u64 })
+        Some(Block {
+            data,
+            restart_offset: restart_offset as u64,
+        })
     }
 }
 
@@ -127,16 +131,23 @@ impl<A: AsRef<[u8]>> BlockIter<A> {
         }
 
         // decode next entry
-        let (shared, non_shared, value_length, p) =
-            decode_entry(self.block.data.as_ref(), self.current as usize, self.restarts as usize).unwrap();
+        let (shared, non_shared, value_length, p) = decode_entry(
+            self.block.data.as_ref(),
+            self.current as usize,
+            self.restarts as usize,
+        )
+        .unwrap();
         assert!(self.key.capacity() >= shared as usize);
 
         self.key.truncate(shared as usize);
-        self.key.extend_from_slice(&self.block.data.as_ref()[p..p + non_shared as usize]);
+        self.key
+            .extend_from_slice(&self.block.data.as_ref()[p..p + non_shared as usize]);
 
         self.next = Some(p as u64 + non_shared as u64 + value_length as u64);
         self.val = Some((p + non_shared as usize, value_length as usize));
-        while self.restart_index + 1 < self.num_restarts && self.restart_point(self.restart_index + 1) < self.current {
+        while self.restart_index + 1 < self.num_restarts
+            && self.restart_point(self.restart_index + 1) < self.current
+        {
             self.restart_index += 1;
         }
         return true;
@@ -161,8 +172,12 @@ impl<A: AsRef<[u8]>> BlockIter<A> {
             let mid = (left + right + 1) / 2;
             let region_offset = self.restart_point(mid);
 
-            let (shared, non_shared, _value_length, key_offset) =
-                decode_entry(&self.block.data.as_ref(), region_offset as usize, self.restarts as usize).unwrap();
+            let (shared, non_shared, _value_length, key_offset) = decode_entry(
+                &self.block.data.as_ref(),
+                region_offset as usize,
+                self.restarts as usize,
+            )
+            .unwrap();
 
             if shared != 0 {
                 // corruption
@@ -209,7 +224,10 @@ impl<A: AsRef<[u8]>> BlockIter<A> {
         let key = self.key.as_slice();
         let (val_offset, val_len) = self.val.unwrap();
 
-        return Some((key, &self.block.data.as_ref()[val_offset..val_offset + val_len]));
+        return Some((
+            key,
+            &self.block.data.as_ref()[val_offset..val_offset + val_len],
+        ));
     }
 }
 
