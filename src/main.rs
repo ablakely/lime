@@ -437,7 +437,7 @@ async fn main() -> Result<()> {
                     }
                 }
                 _ => {
-                    // Manual content - pass to database handler
+                    // Manual content pages - return JSON with HTML content
                     let car_uri_components = &canonical_uri_path
                         .extract_car_uri_components()
                         .expect("Guaranteed to have at least three parts in this match branch");
@@ -447,12 +447,13 @@ async fn main() -> Result<()> {
                             None => return response_404(),
                         };
                     tokio::task::spawn_blocking(move || {
-                        matched_database
-                            .handle_car_request(canonical_uri_path)
-                            .unwrap_or_else(|e| {
-                                Some(response_500(e.context("Handle car request error")))
-                            })
-                            .unwrap_or_else(response_404)
+                        match matched_database.handle_car_request_json(canonical_uri_path) {
+                            Ok(Some(page_data)) => {
+                                axum::Json(ApiResponse::ok(page_data)).into_response()
+                            }
+                            Ok(None) => response_404(),
+                            Err(e) => response_500(e.context("Handle car request error")),
+                        }
                     })
                         .await
                         .unwrap()
