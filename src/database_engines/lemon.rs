@@ -13,11 +13,14 @@ use serde::Deserialize;
 
 use crate::common::{
     Breadcrumb, ImageType, SenderWriter, SiteBranding, aau_404, add_header_and_footer, aou_404,
-    english_list, get_or_compute, image_bytes_to_response, make_zip_static_files,
+    breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, english_list, get_or_compute,
+    image_bytes_to_response, make_zip_static_files,
 };
-use crate::database_engines::DatabaseEngine;
+use crate::database_engines::{DatabaseEngine, ResponseFormat};
 use crate::kv_store::{KVKey, KVStore, KVStoreCache};
-use crate::types::{DatabaseFileType, DatabaseMachineName, IndexJson, Make, Year};
+use crate::types::{
+    DatabaseFileType, DatabaseMachineName, IndexJson, Make, ManualPageResponse, Year,
+};
 use crate::uri_path::{
     AbsoluteUriPath, CanonicalUriPath, CarUriComponents, ConcretizeResult, FullUriPath,
     ServerUriPath, UriComponent, UriPath, concretize_uri, make_breadcrumbs, parse_uri_path,
@@ -201,6 +204,7 @@ impl DatabaseEngine for Lemon {
     fn handle_car_request(
         &self,
         uri_path: CanonicalUriPath,
+        response_format: ResponseFormat,
     ) -> Result<Option<axum::response::Response>> {
         let tables_cache = TablesCache::new(&self.text_database);
 
@@ -227,9 +231,22 @@ impl DatabaseEngine for Lemon {
             Some(page) => page,
             None => return Ok(None),
         };
-        let html =
-            self.page_db_bytes_to_outer_html(&tables_cache, vehicle, &page, &page_db_bytes)?;
-        Ok(Some(axum::response::Html(html).into_response()))
+        Ok(Some(match response_format {
+            ResponseFormat::Html => axum::response::Html(self.page_db_bytes_to_outer_html(
+                &tables_cache,
+                vehicle,
+                &page,
+                &page_db_bytes,
+            )?)
+            .into_response(),
+            ResponseFormat::Json => axum::Json(self.page_db_bytes_to_json(
+                &tables_cache,
+                vehicle,
+                &page,
+                &page_db_bytes,
+            )?)
+            .into_response(),
+        }))
     }
 
     fn handle_bundle_request(
@@ -578,6 +595,25 @@ impl Lemon {
             breadcrumbs_need_more_context_predicate,
         );
         Ok(page_string)
+    }
+
+    fn page_db_bytes_to_json(
+        &self,
+        tables_cache: &TablesCache,
+        vehicle: &VehicleMeta,
+        page: &Page,
+        page_db_bytes: &[u8],
+    ) -> Result<ManualPageResponse> {
+        Ok(ManualPageResponse {
+            title: breadcrumbs_to_title(&page.breadcrumbs, breadcrumbs_need_more_context_predicate),
+            content: self.page_db_bytes_to_outer_html(
+                tables_cache,
+                vehicle,
+                page,
+                page_db_bytes,
+            )?,
+            breadcrumbs: breadcrumbs_to_api_breadcrumbs(&page.breadcrumbs),
+        })
     }
 
     fn determine_adjust_ctx(

@@ -8,7 +8,7 @@ let fs = lib.fileset;
 in
 
 rustPlatform.buildRustPackage {
-  pname = "lemon-website";
+  pname = "lemon-apid";
   version = "1.0.0";
   inherit src;
   cargoLock.lockFile = ./Cargo.lock;
