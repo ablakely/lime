@@ -1,11 +1,11 @@
 use std::{io, mem};
 
-use byteorder::{LittleEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
+use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::compression::CompressionType;
 use crate::error::{Error, MtblError};
 use crate::FileVersion;
-use crate::{METADATA_SIZE, DEFAULT_BLOCK_SIZE, DEFAULT_COMPRESSION_TYPE};
+use crate::{DEFAULT_BLOCK_SIZE, DEFAULT_COMPRESSION_TYPE, METADATA_SIZE};
 use crate::{MAGIC, MAGIC_V1};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -36,7 +36,8 @@ impl Metadata {
         let index_block_offset = b.read_u64::<LittleEndian>()?;
         let data_block_size = b.read_u64::<LittleEndian>()?;
         let compression_algorithm = b.read_u64::<LittleEndian>()?;
-        let compression_algorithm = CompressionType::from_u64(compression_algorithm).ok_or(MtblError::InvalidCompressionAlgorithm)?;
+        let compression_algorithm = CompressionType::from_u64(compression_algorithm)
+            .ok_or(MtblError::InvalidCompressionAlgorithm)?;
         let count_entries = b.read_u64::<LittleEndian>()?;
         let count_data_blocks = b.read_u64::<LittleEndian>()?;
         let bytes_data_blocks = b.read_u64::<LittleEndian>()?;

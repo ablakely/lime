@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::File;
 
-use oxidized_mtbl::{WriterBuilder, CompressionType};
+use oxidized_mtbl::{CompressionType, WriterBuilder};
 
 fn main() {
     let path = env::args().nth(1).unwrap();

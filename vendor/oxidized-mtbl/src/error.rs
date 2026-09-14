@@ -1,7 +1,7 @@
-use std::{fmt, io, error};
+use std::{error, fmt, io};
 
 #[derive(Debug)]
-pub enum Error<U=()> {
+pub enum Error<U = ()> {
     Mtbl(MtblError),
     Io(io::Error),
     Merge(U),
@@ -17,7 +17,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl error::Error for Error { }
+impl error::Error for Error {}
 
 impl<U> From<io::Error> for Error<U> {
     fn from(err: io::Error) -> Error<U> {
@@ -54,4 +54,4 @@ impl fmt::Display for MtblError {
     }
 }
 
-impl error::Error for MtblError { }
+impl error::Error for MtblError {}

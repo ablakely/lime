@@ -1,8 +1,8 @@
-use std::{env, str};
 use std::fs::File;
+use std::{env, str};
 
 use memmap::Mmap;
-use oxidized_mtbl::{Reader, Error};
+use oxidized_mtbl::{Error, Reader};
 
 fn main() -> Result<(), Error> {
     let path = env::args().nth(1).unwrap();

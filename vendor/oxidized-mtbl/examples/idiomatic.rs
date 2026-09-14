@@ -1,7 +1,7 @@
 use std::fs::OpenOptions;
 
-use oxidized_mtbl::*;
 use memmap::Mmap;
+use oxidized_mtbl::*;
 
 // Here we concatenate all the values that we must merge.
 fn concat_merge(_key: &[u8], vals: &[Vec<u8>]) -> Result<Vec<u8>, ()> {
@@ -10,7 +10,11 @@ fn concat_merge(_key: &[u8], vals: &[Vec<u8>]) -> Result<Vec<u8>, ()> {
 
 fn main() -> Result<(), Error> {
     let mut file_options = OpenOptions::new();
-    file_options.read(true).write(true).truncate(true).create(true);
+    file_options
+        .read(true)
+        .write(true)
+        .truncate(true)
+        .create(true);
 
     let file = file_options.open("target/first.mtbl")?;
 

@@ -1,4 +1,4 @@
-use std::{cmp, mem, io};
+use std::{cmp, io, mem};
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 
@@ -8,9 +8,9 @@ use crate::compression::CompressionType;
 use crate::varint::varint_encode64;
 use crate::{FileVersion, Metadata};
 
-use crate::{DEFAULT_COMPRESSION_TYPE, DEFAULT_COMPRESSION_LEVEL};
-use crate::{DEFAULT_BLOCK_SIZE, DEFAULT_BLOCK_RESTART_INTERVAL};
-use crate::{MIN_BLOCK_SIZE, METADATA_SIZE};
+use crate::{DEFAULT_BLOCK_RESTART_INTERVAL, DEFAULT_BLOCK_SIZE};
+use crate::{DEFAULT_COMPRESSION_LEVEL, DEFAULT_COMPRESSION_TYPE};
+use crate::{METADATA_SIZE, MIN_BLOCK_SIZE};
 
 #[derive(Debug, Clone, Copy)]
 pub struct WriterBuilder {
@@ -110,8 +110,9 @@ impl<W: io::Write> Writer<W> {
     }
 
     pub fn insert<K, V>(&mut self, key: K, val: V) -> io::Result<()>
-    where K: AsRef<[u8]>,
-          V: AsRef<[u8]>,
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
     {
         let key = key.as_ref();
         let val = val.as_ref();
@@ -126,14 +127,15 @@ impl<W: io::Write> Writer<W> {
         let estimated_block_size = estimated_block_size + 3 * 5 + key.len() + val.len();
 
         if estimated_block_size >= self.metadata.data_block_size as usize {
-           self.flush()?;
+            self.flush()?;
         }
 
         if self.pending_index_entry {
             let mut enc = [0; 10];
             assert!(self.data.is_empty());
             bytes_shortest_separator(&mut self.last_key, key);
-            self.index.add(&self.last_key, varint_encode64(&mut enc, self.last_offset));
+            self.index
+                .add(&self.last_key, varint_encode64(&mut enc, self.last_offset));
             self.pending_index_entry = false;
         }
 
@@ -157,7 +159,8 @@ impl<W: io::Write> Writer<W> {
 
         if self.pending_index_entry {
             let mut enc = [0; 10];
-            self.index.add(&self.last_key, varint_encode64(&mut enc, self.last_offset));
+            self.index
+                .add(&self.last_key, varint_encode64(&mut enc, self.last_offset));
             self.pending_index_entry = false;
         }
 
@@ -181,7 +184,9 @@ impl<W: io::Write> Writer<W> {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        if self.data.is_empty() { return Ok(()) }
+        if self.data.is_empty() {
+            return Ok(());
+        }
 
         assert!(!self.pending_index_entry);
         self.metadata.bytes_data_blocks += write_block(
@@ -208,8 +213,7 @@ fn write_block<W: io::Write>(
     last_offset: &mut u64,
     pending_offset: &mut u64,
     block: &mut BlockBuilder,
-) -> io::Result<usize>
-{
+) -> io::Result<usize> {
     let raw_content = block.finish();
     let block_content = compress(compression_type, compression_level, &raw_content)?;
     assert!(file_version == FileVersion::FormatV2);
@@ -237,15 +241,23 @@ fn write_block<W: io::Write>(
 }
 
 fn bytes_shortest_separator(start: &mut Vec<u8>, limit: &[u8]) {
-    let min_length = if start.len() < limit.len() { start.len() } else { limit.len() };
+    let min_length = if start.len() < limit.len() {
+        start.len()
+    } else {
+        limit.len()
+    };
 
     let mut diff_index = 0;
     for (s, l) in start.iter().zip(limit).take(min_length) {
-        if s != l { break }
+        if s != l {
+            break;
+        }
         diff_index += 1;
     }
 
-    if diff_index >= min_length { return }
+    if diff_index >= min_length {
+        return;
+    }
 
     let diff_byte = start[diff_index];
     if diff_byte < u8::max_value() && diff_byte + 1 < limit[diff_index] {

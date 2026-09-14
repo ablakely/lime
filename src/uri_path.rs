@@ -1,18 +1,8 @@
-
-
-
-
-
-
-
 use std::{borrow::Cow, fmt::Display};
 
 use anyhow::{Error, Result, anyhow, bail};
 
 use crate::common::{Breadcrumb, car_breadcrumbs};
-
-
-
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct UriComponent(String);
@@ -23,7 +13,6 @@ pub struct UriComponentImproperlyEncoded<'a>(pub Cow<'a, str>);
 pub struct UriComponentDecoded<'a>(pub Cow<'a, str>);
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct UriFragment(String);
-
 
 const PROPER_ENCODE_SET: &percent_encoding_rfc3986::AsciiSet =
     &percent_encoding_rfc3986::NON_ALPHANUMERIC
@@ -120,7 +109,7 @@ pub struct FullUriPath {
     pub dirs: Vec<UriComponent>,
     pub file: Option<UriComponent>,
     pub is_absolute: bool,
-   
+
     pub fragment: Option<UriFragment>,
 }
 
@@ -323,7 +312,6 @@ impl UriPath for RelativeUriPath {
     }
 }
 
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct FragmentlessUriPathImproperlyEncoded<'a> {
     dirs: Vec<UriComponentImproperlyEncoded<'a>>,
@@ -371,7 +359,6 @@ impl UriComponentImproperlyEncoded<'_> {
     }
 }
 
-
 pub fn dirs_to_relative_fragment(dirs: &[UriComponent]) -> UriFragment {
     let mut fragment = String::new();
     for dir in dirs {
@@ -381,12 +368,11 @@ pub fn dirs_to_relative_fragment(dirs: &[UriComponent]) -> UriFragment {
     UriFragment(fragment)
 }
 
-
 pub fn parse_uri_path(path_string: &str) -> Result<FragmentlessUriPathImproperlyEncoded<'_>> {
     if path_string.is_empty() {
         bail!("valid URI paths are not empty");
     }
-   
+
     let components_vec: Vec<&str> = path_string.split("/").collect();
     let mut components: &[&str] = &components_vec;
     let is_absolute = components[0].is_empty();
@@ -470,7 +456,6 @@ pub type CarUriComponents = [UriComponent; 3];
 
 /// Only meant for converting a "car URI path", which is a uri path with exactly three components (not more). For getting the car portion of a larger URI, simply uri_path_string_to_components then extract_car_uri_components
 pub fn car_uri_path_string_to_car_uri_components(path_string: &str) -> Option<CarUriComponents> {
-   
     parse_uri_path(path_string)
         .ok()
         .and_then(|parsed| parsed.reencode_properly().ok())
