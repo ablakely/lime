@@ -1,6 +1,6 @@
 # API
 
-This server exposes JSON by default for navigation and manual discovery routes.
+This server exposes JSON for navigation routes and for manual paths that do not have HTML content available.
 
 ## Navigation JSON
 
@@ -56,7 +56,7 @@ Returns all models for a make/year.
 
 ### `GET /:make/:year/:model_or_engine/.../`
 
-Returns JSON for a manual page/section.
+Returns the HTML version of a manual page/section when that node has `index.html` content available. Otherwise, it returns JSON for the manual page/section.
 
 - `manuals` contains descendant manual links listed from the current page, which is useful for drilling down from paths such as `/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/Repair%20and%20Diagnosis/`.
 - `manuals` includes navigation links discovered from both absolute and relative `<a href>` values, including LEMON split-tree navigation pages.
@@ -77,11 +77,9 @@ Returns JSON for a manual page/section.
 }
 ```
 
-## Manual HTML
-
 ### `GET /:make/:year/:model_or_engine/.../index.html`
 
-Returns the HTML version of the same manual page.
+Returns the HTML version of the same manual page explicitly.
 
 ## Notes
 

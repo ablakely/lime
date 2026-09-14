@@ -156,6 +156,21 @@ fn response_500(e: impl Debug) -> axum::response::Response {
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.").into_response()
 }
 
+fn handle_manual_route_request(
+    database: &dyn DatabaseEngine,
+    request_uri_path: CanonicalUriPath,
+    html_manual_endpoint: bool,
+) -> Result<Option<axum::response::Response>> {
+    if html_manual_endpoint {
+        return database.handle_car_request(request_uri_path, ResponseFormat::Html);
+    }
+
+    match database.handle_car_request(request_uri_path.clone(), ResponseFormat::Html)? {
+        Some(response) => Ok(Some(response)),
+        None => database.handle_car_request(request_uri_path, ResponseFormat::Json),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -451,11 +466,6 @@ async fn main() -> Result<()> {
                     }
                 }
                 _ => {
-                    let response_format = if html_manual_endpoint {
-                        ResponseFormat::Html
-                    } else {
-                        ResponseFormat::Json
-                    };
                     let request_uri_path = if html_manual_endpoint {
                         manual_endpoint_uri_path
                     } else {
@@ -470,8 +480,11 @@ async fn main() -> Result<()> {
                             None => return response_404(),
                         };
                     tokio::task::spawn_blocking(move || {
-                        matched_database
-                            .handle_car_request(request_uri_path, response_format)
+                        handle_manual_route_request(
+                            &*matched_database,
+                            request_uri_path,
+                            html_manual_endpoint,
+                        )
                             .unwrap_or_else(|e| {
                                 Some(response_500(e.context("Handle car request error")))
                             })
@@ -534,9 +547,140 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::sync::Mutex;
+
+    use axum::body::to_bytes;
+    use serde_json::json;
+
+    use crate::{
+        common::SenderWriter,
+        types::{DatabaseMachineName, Make, Year},
+        uri_path::parse_uri_path,
+    };
+
+    struct DummyManualDb {
+        html_available: bool,
+        json_available: bool,
+        calls: Mutex<Vec<ResponseFormat>>,
+    }
+
+    impl DatabaseEngine for DummyManualDb {
+        fn machine_readable_name(&self) -> DatabaseMachineName {
+            DatabaseMachineName("dummy".to_string())
+        }
+
+        fn human_readable_name(&self) -> String {
+            "Dummy".to_string()
+        }
+
+        fn priority_and_info(&self, _make: &Make, _year: &Year) -> (i32, String) {
+            (0, String::new())
+        }
+
+        fn handle_car_request(
+            &self,
+            _uri_path: CanonicalUriPath,
+            response_format: ResponseFormat,
+        ) -> Result<Option<axum::response::Response>> {
+            self.calls.lock().unwrap().push(response_format);
+            Ok(match response_format {
+                ResponseFormat::Html if self.html_available => {
+                    Some(axum::response::Html("<html>manual page</html>").into_response())
+                }
+                ResponseFormat::Json if self.json_available => {
+                    Some(axum::Json(json!({"title": "manual metadata"})).into_response())
+                }
+                _ => None,
+            })
+        }
+
+        fn handle_bundle_request(
+            &self,
+            _car_uri_components: &crate::uri_path::CarUriComponents,
+            _writer: SenderWriter,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        fn global_request_predicate(&self, _uri_path: &CanonicalUriPath) -> bool {
+            false
+        }
+
+        fn handle_global_request(
+            &self,
+            _uri_path: &CanonicalUriPath,
+        ) -> Result<Option<axum::response::Response>> {
+            Ok(None)
+        }
+    }
+
+    fn parse_canonical_uri_path(path: &str) -> CanonicalUriPath {
+        let parsed = parse_uri_path(path).expect("uri parses");
+        let (reencoded, _changed) = parsed.reencode_properly().expect("uri reencodes");
+        let server_uri_path = ServerUriPath::try_from(reencoded).expect("server uri path");
+        server_uri_path.canonicalize().0
+    }
 
     #[test]
     fn bad_uris_still_get_400() {
         assert_eq!(response_400_bad_uri().status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn directory_manual_routes_prefer_html_when_available() {
+        let db = DummyManualDb {
+            html_available: true,
+            json_available: true,
+            calls: Mutex::new(vec![]),
+        };
+        let request_uri_path = parse_canonical_uri_path(
+            "/GMC/1998/Cab%20%26%20Chassis%20C3500%2C%202D%20Pickup%2C%206.5%20F%2C%20Automatic/Repair%20and%20Diagnosis/Accessories%20%26%20Equipment/Steering%20Column%20Switches/Steering%20Column%20Switches/Removal%20%26%20Installation/Lock%20Cylinder%20%28Functional%29/Removal%20%26%20Installation/",
+        );
+
+        let directory_response = handle_manual_route_request(&db, request_uri_path.clone(), false)
+            .expect("directory request succeeds")
+            .expect("directory request returns response");
+        let explicit_index_response = handle_manual_route_request(&db, request_uri_path, true)
+            .expect("index request succeeds")
+            .expect("index request returns response");
+
+        assert_eq!(
+            directory_response.headers()["content-type"],
+            explicit_index_response.headers()["content-type"]
+        );
+        assert_eq!(
+            to_bytes(directory_response.into_body(), usize::MAX)
+                .await
+                .expect("directory body reads"),
+            to_bytes(explicit_index_response.into_body(), usize::MAX)
+                .await
+                .expect("index body reads")
+        );
+        assert_eq!(
+            *db.calls.lock().unwrap(),
+            vec![ResponseFormat::Html, ResponseFormat::Html]
+        );
+    }
+
+    #[test]
+    fn directory_manual_routes_fall_back_to_json_when_html_is_missing() {
+        let db = DummyManualDb {
+            html_available: false,
+            json_available: true,
+            calls: Mutex::new(vec![]),
+        };
+        let request_uri_path = parse_canonical_uri_path(
+            "/GMC/1998/Cab%20%26%20Chassis%20C3500%2C%202D%20Pickup%2C%206.5%20F%2C%20Automatic/",
+        );
+
+        let response = handle_manual_route_request(&db, request_uri_path, false)
+            .expect("directory request succeeds")
+            .expect("directory request returns response");
+
+        assert_eq!(response.headers()["content-type"], "application/json");
+        assert_eq!(
+            *db.calls.lock().unwrap(),
+            vec![ResponseFormat::Html, ResponseFormat::Json]
+        );
     }
 }
