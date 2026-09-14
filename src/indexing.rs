@@ -139,25 +139,28 @@ impl Indices {
                 .cmp(&a.0.priority_and_info(make, year).0)
         });
 
+        let mut models = BTreeMap::<String, Vec<EngineUri>>::new();
+        for (_, models_map) in dbs_and_models {
+            for (model, engines_map) in models_map {
+                models
+                    .entry(model.as_ref().to_string())
+                    .or_default()
+                    .extend(engines_map.iter().map(|(engine, car_uri_components)| EngineUri {
+                        name: engine
+                            .as_ref()
+                            .map(|engine| engine.as_ref().to_string())
+                            .unwrap_or_else(|| model.as_ref().to_string()),
+                        uri: String::from(
+                            car_uri_components_to_uri_path(car_uri_components).stringify(),
+                        ),
+                    }));
+            }
+        }
+
         Some(MakeYearResponse {
-            models: dbs_and_models
+            models: models
                 .into_iter()
-                .flat_map(|(_, models_map)| models_map.iter())
-                .map(|(model, engines_map)| MakeYearModelResponse {
-                    model: model.as_ref().to_string(),
-                    engines: engines_map
-                        .iter()
-                        .map(|(engine, car_uri_components)| EngineUri {
-                            name: engine
-                                .as_ref()
-                                .map(|engine| engine.as_ref().to_string())
-                                .unwrap_or_else(|| model.as_ref().to_string()),
-                            uri: String::from(
-                                car_uri_components_to_uri_path(car_uri_components).stringify(),
-                            ),
-                        })
-                        .collect(),
-                })
+                .map(|(model, engines)| MakeYearModelResponse { model, engines })
                 .collect(),
         })
     }
@@ -241,8 +244,14 @@ mod test {
             human_name: "CHARM",
             priority: 0,
         });
+        let charm2 = Arc::new(DummyDb {
+            machine_name: "charm2",
+            human_name: "CHARM 2",
+            priority: -1,
+        });
         indices.add_database(lemon.clone()).unwrap();
         indices.add_database(charm.clone()).unwrap();
+        indices.add_database(charm2.clone()).unwrap();
         indices.add_vehicle(
             Make::new("Toyota".to_string()),
             &[Year::new("2022".to_string())],
@@ -279,11 +288,23 @@ mod test {
             ],
             charm,
         );
+        indices.add_vehicle(
+            Make::new("Toyota".to_string()),
+            &[Year::new("2022".to_string())],
+            Model::new("Camry".to_string()),
+            Some(Engine::new("3.0L".to_string())),
+            [
+                UriComponent::from_decoded_str("Toyota").unwrap(),
+                UriComponent::from_decoded_str("2022").unwrap(),
+                UriComponent::from_decoded_str("Camry 3.0L").unwrap(),
+            ],
+            charm2,
+        );
         indices
     }
 
     #[test]
-    fn root_and_make_json_include_breadcrumbs() {
+    fn root_and_make_json_include_navigation_links() {
         let indices = sample_indices();
         assert_eq!(
             indices.root_json().makes,
@@ -326,6 +347,10 @@ mod test {
                 EngineUri {
                     name: "Hybrid".to_string(),
                     uri: "/Toyota/2022/Camry%20Hybrid/".to_string(),
+                },
+                EngineUri {
+                    name: "3.0L".to_string(),
+                    uri: "/Toyota/2022/Camry%203.0L/".to_string(),
                 },
             ]
         );

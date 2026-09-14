@@ -429,7 +429,7 @@ async fn main() -> Result<()> {
                 [] => {
                     let navigation_worker = navigation_worker.clone();
                     let indices = indices.clone();
-                    tokio::task::spawn_blocking(move || {
+                    match tokio::task::spawn_blocking(move || {
                         navigation_worker
                             .handle_request(&indices, NavigationRequest::Root)
                             .unwrap_or_else(|e| {
@@ -438,13 +438,18 @@ async fn main() -> Result<()> {
                             .unwrap_or_else(response_404)
                     })
                     .await
-                    .unwrap()
+                    {
+                        Ok(response) => response,
+                        Err(err) => response_500(format!(
+                            "navigation worker join error at root: {err}"
+                        )),
+                    }
                 }
                 [make_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
                     let navigation_worker = navigation_worker.clone();
                     let indices = indices.clone();
-                    tokio::task::spawn_blocking(move || {
+                    match tokio::task::spawn_blocking(move || {
                         navigation_worker
                             .handle_request(&indices, NavigationRequest::Make(make))
                             .unwrap_or_else(|e| {
@@ -453,14 +458,19 @@ async fn main() -> Result<()> {
                             .unwrap_or_else(response_404)
                     })
                     .await
-                    .unwrap()
+                    {
+                        Ok(response) => response,
+                        Err(err) => response_500(format!(
+                            "navigation worker join error at make: {err}"
+                        )),
+                    }
                 }
                 [make_str, year_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
                     let year = Year::new(year_str.decode_uri_component().0.to_string());
                     let navigation_worker = navigation_worker.clone();
                     let indices = indices.clone();
-                    tokio::task::spawn_blocking(move || {
+                    match tokio::task::spawn_blocking(move || {
                         navigation_worker
                             .handle_request(&indices, NavigationRequest::MakeYear(make, year))
                             .unwrap_or_else(|e| {
@@ -471,7 +481,12 @@ async fn main() -> Result<()> {
                             .unwrap_or_else(response_404)
                     })
                     .await
-                    .unwrap()
+                    {
+                        Ok(response) => response,
+                        Err(err) => response_500(format!(
+                            "navigation worker join error at make/year: {err}"
+                        )),
+                    }
                 }
                 _ => {
                     let car_uri_components = &canonical_uri_path
