@@ -1,6 +1,7 @@
 mod common;
 mod database_engines;
 mod indexing;
+mod json_responses;
 mod kv_store;
 mod not_found_layer_adapter;
 mod types;
@@ -19,20 +20,19 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use clap::Parser;
 use governor::clock::Clock;
-use plait::html;
 use tokio::net::TcpListener;
 
 use crate::common::{
-    SiteBranding, add_header_and_footer, car_breadcrumbs,
-    car_uri_components_to_human_readable_file_name, make_writer_to_bytes_stream,
+    SiteBranding, car_uri_components_to_human_readable_file_name, make_writer_to_bytes_stream,
 };
 use crate::database_engines::DatabaseEngine;
 use crate::database_engines::charm::Charm;
 use crate::database_engines::lemon::Lemon;
 use crate::indexing::Indices;
+use crate::json_responses::{ApiResponse, ErrorResponse, MakeResponse, MakeYearResponse, RootResponse};
 use crate::not_found_layer_adapter::NotFoundLayerAdapter;
 use crate::types::{IndexJsonCommon, Make, Year};
-use crate::uri_path::{CanonicalUriPath, ServerUriPath, UriComponent, UriPath, parse_uri_path};
+use crate::uri_path::{CanonicalUriPath, ServerUriPath, parse_uri_path};
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -132,13 +132,7 @@ const HTML_DIR: include_dir::Dir<'static> =
 fn response_404() -> axum::response::Response {
     (
         StatusCode::NOT_FOUND,
-        axum::response::Html(
-            HTML_DIR
-                .get_file("404.html")
-                .expect("404 file was not found, this is ironic")
-                .contents_utf8()
-                .expect("404 page bad utf8"),
-        ),
+        axum::Json(ErrorResponse::not_found()),
     )
         .into_response()
 }
@@ -146,15 +140,14 @@ fn response_404() -> axum::response::Response {
 fn response_400_bad_uri() -> axum::response::Response {
     (
         StatusCode::BAD_REQUEST,
-        "invalid URI, probably bad percent encoding",
+        axum::Json(ErrorResponse::bad_request("invalid URI, probably bad percent encoding")),
     )
         .into_response()
 }
 
-
 fn response_500(e: impl Debug) -> axum::response::Response {
     log::error!(target: "500", "Serving up a 500 error due to: {e:?}");
-    (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.").into_response()
+    (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(ErrorResponse::internal_error())).into_response()
 }
 
 #[tokio::main]
@@ -163,7 +156,6 @@ async fn main() -> Result<()> {
 
     let args = CliArgs::parse();
 
-   
     let index_paths: Vec<PathBuf> = if args.is_interactive() {
         #[cfg(windows)]
         {
@@ -221,9 +213,7 @@ async fn main() -> Result<()> {
             serde_json::from_slice(&bytes).expect("index.json had invalid JSON!");
         let common_parsed: IndexJsonCommon = serde_json::from_value(index_value.clone())
             .expect("index.json was missing common properties!");
-       
-       
-       
+
         let database: Arc<dyn DatabaseEngine> = match common_parsed.meta.database.as_str() {
             "lemon" => {
                 log::info!("Loading LEMON database from {index_path_string}");
@@ -266,8 +256,8 @@ async fn main() -> Result<()> {
     let default_headers_layer = tower_default_headers::DefaultHeadersLayer::new(default_headers);
 
     let is_rate_limiting_enabled = args.is_rate_limiting_enabled();
-    let all_requests_governor = Arc::new(governor::DefaultKeyedRateLimiter::<IpAddr>::keyed(governor::Quota::per_minute(args.rate_limit_all_requests_per_ip_per_minute.try_into().expect("Must provide nonzero rate limits; use --disable-rate-limiting if you don't want rate limiting."))));
-    let bundle_requests_governor =  Arc::new(governor::DefaultKeyedRateLimiter::<IpAddr>::keyed(governor::Quota::per_hour(args.rate_limit_bundles_per_ip_per_hour.try_into().expect("Must provide nonzero rate limits; use --disable-rate-limiting if you don't want rate limiting."))));
+    let all_requests_governor = Arc::new(governor::DefaultKeyedRateLimiter::<IpAddr>::keyed(governor::Quota::per_minute(args.rate_limit_all_requests_per_ip_per_minute.try_into().expect("Must provide non-zero rate limit"))));
+    let bundle_requests_governor =  Arc::new(governor::DefaultKeyedRateLimiter::<IpAddr>::keyed(governor::Quota::per_hour(args.rate_limit_bundles_per_ip_per_hour.try_into().expect("Must provide non-zero bundle rate limit"))));
     let semaphore_limit = if is_rate_limiting_enabled {
         args.rate_limit_global_inflight_bundles
     } else {
@@ -275,8 +265,6 @@ async fn main() -> Result<()> {
     };
     let bundle_semaphore = Arc::new(tokio::sync::Semaphore::new(semaphore_limit));
 
-   
-   
     let rate_limit_layer = axum::middleware::from_fn(
         move |ip: real::RealIp, request: axum::extract::Request, next: axum::middleware::Next| {
             let all_requests_governor = all_requests_governor.clone();
@@ -293,7 +281,6 @@ async fn main() -> Result<()> {
         },
     );
 
-   
     let real_ip_layer = real::RealIpLayer::with_extractor(
         real::IpExtractor::new().with_headers(vec!["X-Real-IP".to_string()]),
     );
@@ -314,7 +301,7 @@ async fn main() -> Result<()> {
             };
             let server_uri_path = match ServerUriPath::try_from(fragmentless_uri_path) {
                 Err(_) => {
-                    return (StatusCode::BAD_REQUEST, "invalid URI")
+                    return (StatusCode::BAD_REQUEST, axum::Json(ErrorResponse::bad_request("invalid URI")))
                         .into_response();
                 }
                 Ok(u) => u,
@@ -346,7 +333,6 @@ async fn main() -> Result<()> {
 
             match &canonical_uri_path.dirs() {
                 [bundle, _, _, _] if bundle.as_str() == "bundle" => {
-                   
                     let chopped_uri_path = CanonicalUriPath {
                         dirs: canonical_uri_path.dirs()[1..].into(),
                     };
@@ -359,56 +345,45 @@ async fn main() -> Result<()> {
                             None => return response_404(),
                         };
                     if args.disable_bundles {
-                        return ".zip downloads are disabled right now.".into_response();
+                        return (
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            axum::Json(ErrorResponse::bad_request(".zip downloads are disabled right now"))
+                        ).into_response();
                     }
 
                     match method {
                         axum::http::Method::GET => {
-                            let inner_html = html! {
-                                form(action: "", method: "POST", enctype: "application/x-www-form-urlencoded") {
-                                    label(for: "captcha") {
-                                        "To prevent automated downloads, please type \"human\" (without quotes) in the box to proceed: "
-                                    }
-                                    br;
-                                    input(name: "captcha", id: "captcha", placeholder: "type \"human\" here");
-                                    br;
-                                    button(type: "submit") {
-                                        "Download manual"
-                                    }
-                                }
-                                br; br;
-                                "This may seem silly, but it very effectively prevents the vast majority of automated web crawlers!"
-                                    br; br;
-                                i {
-                                    "If you are trying to download the entire LEMON database, please do not automate the download of these .zip files. Instead, click the \"About\" link at the bottom of the homepage, and you'll find instructions for how to bulk download the full database using a torrent."
-                                }
-                            }.to_string();
-                            let faked_out_canonical_uri_path = CanonicalUriPath {
-                                dirs: canonical_uri_path.dirs()[1..].into(),
-                            };
-                            let mut breads = car_breadcrumbs(&faked_out_canonical_uri_path);
-                            breads.push((UriComponent::from_decoded_str("Bundle Download").unwrap(), canonical_uri_path.into()));
-                            let outer_html = add_header_and_footer(&branding, &inner_html, &breads, |bcs| bcs.len() == 4);
-                            axum::response::Html(outer_html).into_response()
+                            let make = car_uri_components[0].decode_uri_component().0.to_string();
+                            let year = car_uri_components[1].decode_uri_component().0.to_string();
+                            let model = car_uri_components[2].decode_uri_component().0.to_string();
+                            let car_name = format!("{} {} {}", year, make, model);
+                            
+                            axum::Json(ApiResponse::ok(serde_json::json!({
+                                "car_name": car_name,
+                                "make": make,
+                                "year": year,
+                                "model": model,
+                                "message": "POST with captcha=human to download",
+                            }))).into_response()
                         }
                         axum::http::Method::POST => {
                             if raw_form.0.as_ref() != b"captcha=human" {
-                                return (StatusCode::FORBIDDEN, "You did not type human in the box, bozo. Go back and try again.").into_response();
+                                return (StatusCode::FORBIDDEN, axum::Json(ErrorResponse::bad_request("You did not type human in the box, bozo. Go back and try again."))).into_response();
                             }
 
                             let semaphore_permit = match bundle_semaphore.try_acquire_owned() {
                                 Ok(p) => p,
-                                Err(tokio::sync::TryAcquireError::NoPermits) => return (StatusCode::SERVICE_UNAVAILABLE, format!("Too many people are downloading .zips simultaneously right now (exactly {}), try again later.\n\n.zip files cause much more stress on our server than viewing webpages, so we put a separate limit on zip downloads so that they can't bring down the main website.", args.rate_limit_global_inflight_bundles)).into_response(),
+                                Err(tokio::sync::TryAcquireError::NoPermits) => return (StatusCode::SERVICE_UNAVAILABLE, axum::Json(ErrorResponse::bad_request("Too many people are downloading .zips simultaneously right now"))).into_response(),
                                 Err(tokio::sync::TryAcquireError::Closed) => return response_500("TryAcquireError::Closed acquiring bundling semaphore permit"),
                             };
                             if let Err(e) = bundle_requests_governor.check_key(&ip.ip()) {
                                 let remaining_time = e.wait_time_from(bundle_requests_governor.clock().now());
-                                let remaining_string = if remaining_time > Duration::from_mins(2) {
+                                let remaining_string = if remaining_time > Duration::from_secs(120) {
                                     format!("{} minutes", remaining_time.as_secs() / 60)
                                 } else {
                                     format!("{} seconds", remaining_time.as_secs())
                                 };
-                                return (StatusCode::TOO_MANY_REQUESTS, format!("You've hit the hourly .zip download rate limit. Downloading .zips puts a lot of stress on our server so we have to limit how often you can download one.\n\nYou can dowload another zip starting in {remaining_string}.\n\nIf you need to create many zip files, use the \"About\" link at the bottom of the website to learn how you can do a bulk download of the entire LEMON website at once!")).into_response();
+                                return (StatusCode::TOO_MANY_REQUESTS, axum::Json(ErrorResponse::bad_request(&format!("You've hit the hourly .zip download rate limit. You can download again in {}", remaining_string)))).into_response();
                             }
 
                             let filename = format!("LEMON {}.zip", car_uri_components_to_human_readable_file_name(&car_uri_components));
@@ -429,52 +404,40 @@ async fn main() -> Result<()> {
                                 .content_type("application/zip")
                                 .into_response()
                         }
-                        _ => (StatusCode::METHOD_NOT_ALLOWED, "what u up to?").into_response()
+                        _ => (StatusCode::METHOD_NOT_ALLOWED, axum::Json(ErrorResponse::bad_request("Method not allowed"))).into_response()
                     }
                 }
                 [] => {
-                    let html = indices.root_html();
-                    axum::response::Html(
-                        add_header_and_footer(
-                            &branding,
-                            &html,
-                            &car_breadcrumbs(&canonical_uri_path),
-                            |_| false,
-                        )
-                            .to_string(),
-                    )
-                        .into_response()
+                    // Root endpoint - list all makes
+                    let makes = indices.get_all_makes();
+                    axum::Json(ApiResponse::ok(RootResponse { makes })).into_response()
                 }
                 [make_str] => {
+                    // Make endpoint - list all years for a make
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
-                    let html = match indices.make_html(&make) {
-                        Some(h) => h,
-                        None => return response_404(),
-                    };
-                    axum::response::Html(add_header_and_footer(
-                        &branding,
-                        &html,
-                        &car_breadcrumbs(&canonical_uri_path),
-                        |_| false,
-                    ))
-                        .into_response()
+                    match indices.get_years_for_make(&make) {
+                        Some(years) => {
+                            axum::Json(ApiResponse::ok(MakeResponse {
+                                make: make.0.clone(),
+                                years,
+                            })).into_response()
+                        }
+                        None => response_404(),
+                    }
                 }
                 [make_str, year_str] => {
+                    // Make/Year endpoint - list models for a make/year
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
                     let year = Year::new(year_str.decode_uri_component().0.to_string());
-                    let html = match indices.make_year_html(&make, &year) {
-                        Some(h) => h,
-                        None => return response_404(),
-                    };
-                    axum::response::Html(add_header_and_footer(
-                        &branding,
-                        &html,
-                        &car_breadcrumbs(&canonical_uri_path),
-                        |_| false,
-                    ))
-                        .into_response()
+                    match indices.get_models_for_make_year(&make, &year) {
+                        Some(response) => {
+                            axum::Json(ApiResponse::ok(response)).into_response()
+                        }
+                        None => response_404(),
+                    }
                 }
                 _ => {
+                    // Manual content - pass to database handler
                     let car_uri_components = &canonical_uri_path
                         .extract_car_uri_components()
                         .expect("Guaranteed to have at least three parts in this match branch");
@@ -502,7 +465,6 @@ async fn main() -> Result<()> {
         .layer(rate_limit_layer)
         .layer(real_ip_layer);
 
-   
     if args.listen_address.starts_with("unix:") {
         #[cfg(unix)]
         {
@@ -511,17 +473,7 @@ async fn main() -> Result<()> {
 
             let path = Path::new(&args.listen_address["unix:".len()..]);
             log::info!("Server starting on unix socket {}", path.to_string_lossy());
-           
-           
-           
-           
-           
-           
-           
-           
-           
-           
-           
+
             if path.exists() {
                 std::fs::remove_file(path).expect("Unix socket already existed, and we failed to delete it (likely already in use).");
             }
@@ -547,7 +499,6 @@ async fn main() -> Result<()> {
                     &listen_address_to_display
                 ))
                 .alert()
-               
                 .show()
                 .expect("Failed to show server listen info dialog");
         }
