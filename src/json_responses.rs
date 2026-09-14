@@ -67,6 +67,21 @@ pub struct EngineVariant {
     pub path: String,
 }
 
+/// Manual page response - returns HTML content wrapped in JSON
+#[derive(Serialize)]
+pub struct ManualPageResponse {
+    pub title: String,
+    pub content: String,  // HTML content
+    pub breadcrumbs: Vec<BreadcrumbData>,
+}
+
+/// Breadcrumb for navigation
+#[derive(Serialize)]
+pub struct BreadcrumbData {
+    pub name: String,
+    pub path: String,
+}
+
 /// Error response
 #[derive(Serialize)]
 pub struct ErrorResponse {
