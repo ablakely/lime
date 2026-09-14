@@ -29,10 +29,10 @@ use crate::database_engines::DatabaseEngine;
 use crate::database_engines::charm::Charm;
 use crate::database_engines::lemon::Lemon;
 use crate::indexing::Indices;
-use crate::json_responses::{ApiResponse, ErrorResponse, MakeResponse, MakeYearResponse, RootResponse};
+use crate::json_responses::{ApiResponse, ErrorResponse, MakeResponse, RootResponse};
 use crate::not_found_layer_adapter::NotFoundLayerAdapter;
 use crate::types::{IndexJsonCommon, Make, Year};
-use crate::uri_path::{CanonicalUriPath, ServerUriPath, parse_uri_path};
+use crate::uri_path::{CanonicalUriPath, ServerUriPath, UriPath, parse_uri_path};
 
 #[derive(Parser, Debug)]
 struct CliArgs {
@@ -331,7 +331,7 @@ async fn main() -> Result<()> {
                 }
             }
 
-            match &canonical_uri_path.dirs() {
+            match &canonical_uri_path.dirs()[..] {
                 [bundle, _, _, _] if bundle.as_str() == "bundle" => {
                     let chopped_uri_path = CanonicalUriPath {
                         dirs: canonical_uri_path.dirs()[1..].into(),
