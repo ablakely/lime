@@ -2,6 +2,7 @@ mod common;
 mod database_engines;
 mod indexing;
 mod kv_store;
+mod navigation_worker;
 mod not_found_layer_adapter;
 mod types;
 mod uri_path;
@@ -16,7 +17,6 @@ use std::{io::Read, path::PathBuf};
 
 use anyhow::Result;
 use axum::http::StatusCode;
-use axum::http::header::ACCEPT;
 use axum::response::IntoResponse;
 use clap::Parser;
 use governor::clock::Clock;
@@ -31,6 +31,7 @@ use crate::database_engines::charm::Charm;
 use crate::database_engines::lemon::Lemon;
 use crate::database_engines::{DatabaseEngine, ResponseFormat};
 use crate::indexing::Indices;
+use crate::navigation_worker::{NavigationRequest, NavigationWorker};
 use crate::not_found_layer_adapter::NotFoundLayerAdapter;
 use crate::types::{IndexJsonCommon, Make, Year};
 use crate::uri_path::{CanonicalUriPath, ServerUriPath, UriComponent, UriPath, parse_uri_path};
@@ -152,35 +153,6 @@ fn response_400_bad_uri() -> axum::response::Response {
         .into_response()
 }
 
-fn query_requests_json(query: Option<&str>) -> bool {
-    query
-        .into_iter()
-        .flat_map(|query| query.split('&'))
-        .filter_map(|pair| pair.split_once('='))
-        .any(|(key, value)| {
-            key.eq_ignore_ascii_case("format") && value.eq_ignore_ascii_case("json")
-        })
-}
-
-fn accepts_json(headers: &axum::http::HeaderMap) -> bool {
-    headers
-        .get(ACCEPT)
-        .and_then(|value| value.to_str().ok())
-        .into_iter()
-        .flat_map(|value| value.split(','))
-        .filter_map(|value| value.split(';').next())
-        .map(str::trim)
-        .any(|mime| mime.eq_ignore_ascii_case("application/json") || mime.ends_with("+json"))
-}
-
-fn response_format(uri: &axum::http::Uri, headers: &axum::http::HeaderMap) -> ResponseFormat {
-    if query_requests_json(uri.query()) || accepts_json(headers) {
-        ResponseFormat::Json
-    } else {
-        ResponseFormat::Html
-    }
-}
-
 fn response_500(e: impl Debug) -> axum::response::Response {
     log::error!(target: "500", "Serving up a 500 error due to: {e:?}");
     (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.").into_response()
@@ -280,6 +252,7 @@ async fn main() -> Result<()> {
         }
     }
     let indices = Arc::new(indices_mut);
+    let navigation_worker = Arc::new(NavigationWorker::default());
     let serve_dir_service = tower_serve_static::ServeDir::new(&HTML_DIR);
     let serve_dir_layer = NotFoundLayerAdapter::new(serve_dir_service);
     let mut default_headers = axum::http::HeaderMap::new();
@@ -322,8 +295,7 @@ async fn main() -> Result<()> {
     );
 
     let app = axum::Router::new()
-        .fallback(async move |ip: real::RealIp, uri: axum::http::Uri, method: axum::http::Method, headers: axum::http::HeaderMap, raw_form: axum::extract::RawForm| -> axum::response::Response {
-            let response_format = response_format(&uri, &headers);
+        .fallback(async move |ip: real::RealIp, uri: axum::http::Uri, method: axum::http::Method, _headers: axum::http::HeaderMap, raw_form: axum::extract::RawForm| -> axum::response::Response {
             let parsed_uri_path = match parse_uri_path(uri.path()) {
                 Ok(p) => p,
                 Err(_) => return response_400_bad_uri(),
@@ -455,67 +427,51 @@ async fn main() -> Result<()> {
                     }
                 }
                 [] => {
-                    match response_format {
-                        ResponseFormat::Html => {
-                            let html = indices.root_html();
-                            axum::response::Html(
-                                add_header_and_footer(
-                                    &branding,
-                                    &html,
-                                    &car_breadcrumbs(&canonical_uri_path),
-                                    |_| false,
-                                )
-                                .to_string(),
-                            )
-                            .into_response()
-                        }
-                        ResponseFormat::Json => axum::Json(indices.root_json()).into_response(),
-                    }
+                    let navigation_worker = navigation_worker.clone();
+                    let indices = indices.clone();
+                    tokio::task::spawn_blocking(move || {
+                        navigation_worker
+                            .handle_request(&indices, NavigationRequest::Root)
+                            .unwrap_or_else(|e| {
+                                Some(response_500(e.context("navigation worker failed at root")))
+                            })
+                            .unwrap_or_else(response_404)
+                    })
+                    .await
+                    .unwrap()
                 }
                 [make_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
-                    match response_format {
-                        ResponseFormat::Html => {
-                            let html = match indices.make_html(&make) {
-                                Some(h) => h,
-                                None => return response_404(),
-                            };
-                            axum::response::Html(add_header_and_footer(
-                                &branding,
-                                &html,
-                                &car_breadcrumbs(&canonical_uri_path),
-                                |_| false,
-                            ))
-                            .into_response()
-                        }
-                        ResponseFormat::Json => match indices.make_json(&make) {
-                            Some(response) => axum::Json(response).into_response(),
-                            None => return response_404(),
-                        },
-                    }
+                    let navigation_worker = navigation_worker.clone();
+                    let indices = indices.clone();
+                    tokio::task::spawn_blocking(move || {
+                        navigation_worker
+                            .handle_request(&indices, NavigationRequest::Make(make))
+                            .unwrap_or_else(|e| {
+                                Some(response_500(e.context("navigation worker failed at make")))
+                            })
+                            .unwrap_or_else(response_404)
+                    })
+                    .await
+                    .unwrap()
                 }
                 [make_str, year_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
                     let year = Year::new(year_str.decode_uri_component().0.to_string());
-                    match response_format {
-                        ResponseFormat::Html => {
-                            let html = match indices.make_year_html(&make, &year) {
-                                Some(h) => h,
-                                None => return response_404(),
-                            };
-                            axum::response::Html(add_header_and_footer(
-                                &branding,
-                                &html,
-                                &car_breadcrumbs(&canonical_uri_path),
-                                |_| false,
-                            ))
-                            .into_response()
-                        }
-                        ResponseFormat::Json => match indices.make_year_json(&make, &year) {
-                            Some(response) => axum::Json(response).into_response(),
-                            None => return response_404(),
-                        },
-                    }
+                    let navigation_worker = navigation_worker.clone();
+                    let indices = indices.clone();
+                    tokio::task::spawn_blocking(move || {
+                        navigation_worker
+                            .handle_request(&indices, NavigationRequest::MakeYear(make, year))
+                            .unwrap_or_else(|e| {
+                                Some(response_500(
+                                    e.context("navigation worker failed at make/year"),
+                                ))
+                            })
+                            .unwrap_or_else(response_404)
+                    })
+                    .await
+                    .unwrap()
                 }
                 _ => {
                     let car_uri_components = &canonical_uri_path
@@ -528,7 +484,7 @@ async fn main() -> Result<()> {
                         };
                     tokio::task::spawn_blocking(move || {
                         matched_database
-                            .handle_car_request(canonical_uri_path, response_format)
+                            .handle_car_request(canonical_uri_path, ResponseFormat::Html)
                             .unwrap_or_else(|e| {
                                 Some(response_500(e.context("Handle car request error")))
                             })
@@ -593,26 +549,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn query_parameter_can_request_json() {
-        assert!(query_requests_json(Some("format=json")));
-        assert!(query_requests_json(Some("foo=bar&format=json")));
-        assert!(!query_requests_json(Some("format=html")));
-        assert!(!query_requests_json(None));
-    }
-
-    #[test]
-    fn accept_header_can_request_json() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(ACCEPT, "application/json".parse().unwrap());
-        assert!(accepts_json(&headers));
-
-        headers.insert(
-            ACCEPT,
-            "text/html, application/problem+json".parse().unwrap(),
-        );
-        assert!(accepts_json(&headers));
-
-        headers.insert(ACCEPT, "text/html".parse().unwrap());
-        assert!(!accepts_json(&headers));
+    fn bad_uris_still_get_400() {
+        assert_eq!(response_400_bad_uri().status(), StatusCode::BAD_REQUEST);
     }
 }

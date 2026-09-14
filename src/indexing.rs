@@ -1,22 +1,18 @@
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
 
 use anyhow::{Result, bail};
-use plait::html;
 
 use crate::{
-    common::safe_a,
     database_engines::DatabaseEngine,
     types::{
-        ApiBreadcrumb, DatabaseMachineName, Engine, Make, MakeResponse, MakeYearDatabaseResponse,
-        MakeYearModelResponse, MakeYearResponse, Model, RootResponse, Year,
+        DatabaseMachineName, Engine, EngineUri, Make, MakeResponse, MakeYearModelResponse,
+        MakeYearResponse, Model, NamedUri, RootResponse, Year, YearUri,
     },
     uri_path::{
-        CanonicalUriPath, CarUriComponents, FullUriPath, UriComponent, UriComponentDecoded,
-        UriPath, car_uri_components_to_uri_path,
+        CanonicalUriPath, CarUriComponents, UriComponent, UriPath, car_uri_components_to_uri_path,
     },
 };
 
@@ -105,115 +101,30 @@ impl Indices {
         }
     }
 
-    pub fn root_html(&self) -> String {
-        html! {
-            ul {
-                for make in self.hierarchical.keys() {
-                    let make_uri_component = UriComponentDecoded(Cow::Borrowed(make.as_ref()))
-
-                        .encode_uri_component().unwrap();
-                    li {
-                        @(&safe_a(None, &FullUriPath {
-                            dirs: vec![make_uri_component],
-                            file: None,
-                            fragment: None,
-                            is_absolute: false
-                        }, &html! { (make.as_ref()) }))
-                    }
-                }
-            }
-        }
-        .to_string()
-    }
-
     pub fn root_json(&self) -> RootResponse {
         RootResponse {
             makes: self
                 .hierarchical
                 .keys()
-                .map(|make| make.as_ref().to_string())
+                .map(|make| NamedUri {
+                    name: make.as_ref().to_string(),
+                    uri: uri_for_components(&[make.as_ref()]),
+                })
                 .collect(),
-            breadcrumbs: Vec::new(),
         }
-    }
-
-    pub fn make_html(&self, make: &Make) -> Option<String> {
-        let years_map = self.hierarchical.get(make)?;
-        Some(
-            html! {
-                ul {
-                    for year in years_map.keys() {
-                        let year_uri_component = UriComponentDecoded(Cow::Borrowed(year.as_ref()))
-                            .encode_uri_component().unwrap();
-                        li {
-                            @(&safe_a(None, &FullUriPath {
-                                dirs: vec![year_uri_component],
-                                file: None,
-                                fragment: None,
-                                is_absolute: false,
-                            }, &html! { (year.as_ref()) }))
-                        }
-                    }
-                }
-            }
-            .to_string(),
-        )
     }
 
     pub fn make_json(&self, make: &Make) -> Option<MakeResponse> {
         let years_map = self.hierarchical.get(make)?;
         Some(MakeResponse {
-            make: make.as_ref().to_string(),
             years: years_map
                 .keys()
-                .map(|year| year.as_ref().to_string())
+                .map(|year| YearUri {
+                    year: year.as_ref().to_string(),
+                    uri: uri_for_components(&[make.as_ref(), year.as_ref()]),
+                })
                 .collect(),
-            breadcrumbs: json_breadcrumbs(&[make.as_ref()]),
         })
-    }
-
-    pub fn make_year_html(&self, make: &Make, year: &Year) -> Option<String> {
-        let dbs_map = self.hierarchical.get(make).and_then(|m| m.get(year))?;
-        let mut dbs_and_models: Vec<(&Arc<dyn DatabaseEngine>, &ModelsMap)> = dbs_map
-            .iter()
-            .map(|(db_name, models_map)| (&self.engines[db_name], models_map))
-            .collect();
-        dbs_and_models.sort_by(|a, b| -> std::cmp::Ordering {
-            b.0.priority_and_info(make, year)
-                .0
-                .cmp(&a.0.priority_and_info(make, year).0)
-        });
-
-        Some(html! {
-            ul {
-                for (db, models_map) in &dbs_and_models {
-                    h3 { "Database: " (db.human_readable_name()) }
-                    div { #(db.priority_and_info(make, year).1) }
-                    br;
-                    for (model, engines_map) in *models_map {
-                        let has_multiple_engines = engines_map.len() > 1;
-                        if has_multiple_engines {
-                            li(class: "li-folder") {
-                                a { (model.as_ref()) }
-                                ul {
-                                    for (engine, car_uri_components) in engines_map {
-                                        let engine_str: &str = engine.as_ref().expect("When a car has multiple engines, all engines must be nonempty!").as_ref();
-                                        li {
-                                            @(&safe_a(None, &car_uri_components_to_uri_path(car_uri_components), html! { (&engine_str) }))
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            let (engine, car_uri_components) = engines_map.iter().next().expect("every model should have at least one engine");
-                            li {
-                                @(&safe_a(None, &car_uri_components_to_uri_path(car_uri_components), html! { (model_engine_human_readable(model, engine.as_ref())) }))
-                            }
-                        }
-                    }
-                }
-            }
-        }.to_string())
     }
 
     pub fn make_year_json(&self, make: &Make, year: &Year) -> Option<MakeYearResponse> {
@@ -229,52 +140,38 @@ impl Indices {
         });
 
         Some(MakeYearResponse {
-            make: make.as_ref().to_string(),
-            year: year.as_ref().to_string(),
-            databases: dbs_and_models
+            models: dbs_and_models
                 .into_iter()
-                .map(|(db, models_map)| MakeYearDatabaseResponse {
-                    name: db.human_readable_name(),
-                    info_html: db.priority_and_info(make, year).1,
-                    models: models_map
+                .flat_map(|(_, models_map)| models_map.iter())
+                .map(|(model, engines_map)| MakeYearModelResponse {
+                    model: model.as_ref().to_string(),
+                    engines: engines_map
                         .iter()
-                        .map(|(model, engines_map)| MakeYearModelResponse {
-                            model: model.as_ref().to_string(),
-                            engines: engines_map
-                                .keys()
-                                .filter_map(|engine| {
-                                    engine.as_ref().map(|engine| engine.as_ref().to_string())
-                                })
-                                .collect(),
+                        .map(|(engine, car_uri_components)| EngineUri {
+                            name: engine
+                                .as_ref()
+                                .map(|engine| engine.as_ref().to_string())
+                                .unwrap_or_else(|| model.as_ref().to_string()),
+                            uri: String::from(
+                                car_uri_components_to_uri_path(car_uri_components).stringify(),
+                            ),
                         })
                         .collect(),
                 })
                 .collect(),
-            breadcrumbs: json_breadcrumbs(&[make.as_ref(), year.as_ref()]),
         })
     }
 }
 
-fn model_engine_human_readable<'a>(model: &'a Model, engine: Option<&Engine>) -> Cow<'a, str> {
-    match engine {
-        Some(eng) => Cow::Owned(format!("{} {}", model.as_ref(), eng.as_ref())),
-        None => Cow::Borrowed(model.as_ref()),
-    }
-}
-
-fn json_breadcrumbs(decoded_components: &[&str]) -> Vec<ApiBreadcrumb> {
-    let mut dirs = Vec::with_capacity(decoded_components.len());
-    let mut breadcrumbs = Vec::with_capacity(decoded_components.len());
-    for component in decoded_components {
-        let encoded = UriComponent::from_decoded_str(component)
-            .expect("json breadcrumb component cannot be empty");
-        dirs.push(encoded);
-        breadcrumbs.push(ApiBreadcrumb {
-            label: (*component).to_string(),
-            href: String::from(CanonicalUriPath { dirs: dirs.clone() }.stringify()),
-        });
-    }
-    breadcrumbs
+fn uri_for_components(decoded_components: &[&str]) -> String {
+    let dirs = decoded_components
+        .iter()
+        .map(|component| {
+            UriComponent::from_decoded_str(component)
+                .expect("navigation uri component cannot be empty")
+        })
+        .collect();
+    String::from(CanonicalUriPath { dirs }.stringify())
 }
 
 #[cfg(test)]
@@ -388,19 +285,22 @@ mod test {
     #[test]
     fn root_and_make_json_include_breadcrumbs() {
         let indices = sample_indices();
-        assert_eq!(indices.root_json().makes, vec!["Toyota"]);
-        assert_eq!(indices.root_json().breadcrumbs, Vec::<ApiBreadcrumb>::new());
+        assert_eq!(
+            indices.root_json().makes,
+            vec![NamedUri {
+                name: "Toyota".to_string(),
+                uri: "/Toyota/".to_string()
+            }]
+        );
 
         let make_json = indices
             .make_json(&Make::new("Toyota".to_string()))
             .expect("expected make json");
-        assert_eq!(make_json.make, "Toyota");
-        assert_eq!(make_json.years, vec!["2022"]);
         assert_eq!(
-            make_json.breadcrumbs,
-            vec![ApiBreadcrumb {
-                label: "Toyota".to_string(),
-                href: "/Toyota/".to_string(),
+            make_json.years,
+            vec![YearUri {
+                year: "2022".to_string(),
+                uri: "/Toyota/2022/".to_string(),
             }]
         );
     }
@@ -414,31 +314,30 @@ mod test {
                 &Year::new("2022".to_string()),
             )
             .expect("expected make/year json");
-        assert_eq!(response.databases.len(), 2);
-        assert_eq!(response.databases[0].name, "LEMON");
-        assert_eq!(response.databases[0].models[0].model, "Camry");
+        assert_eq!(response.models.len(), 2);
+        assert_eq!(response.models[0].model, "Camry");
         assert_eq!(
-            response.databases[0].models[0].engines,
-            vec!["2.5L", "Hybrid"]
-        );
-        assert_eq!(response.databases[1].name, "CHARM");
-        assert_eq!(response.databases[1].models[0].model, "Corolla");
-        assert_eq!(
-            response.databases[1].models[0].engines,
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            response.breadcrumbs,
+            response.models[0].engines,
             vec![
-                ApiBreadcrumb {
-                    label: "Toyota".to_string(),
-                    href: "/Toyota/".to_string(),
+                EngineUri {
+                    name: "2.5L".to_string(),
+                    uri: "/Toyota/2022/Camry/".to_string(),
                 },
-                ApiBreadcrumb {
-                    label: "2022".to_string(),
-                    href: "/Toyota/2022/".to_string(),
+                EngineUri {
+                    name: "Hybrid".to_string(),
+                    uri: "/Toyota/2022/Camry%20Hybrid/".to_string(),
                 },
             ]
+        );
+        assert_eq!(response.models[1].model, "Corolla");
+        assert_eq!(
+            vec![
+                EngineUri {
+                    name: "Corolla".to_string(),
+                    uri: "/Toyota/2022/Corolla/".to_string(),
+                },
+            ],
+            response.models[1].engines
         );
     }
 }
