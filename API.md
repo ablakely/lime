@@ -58,14 +58,12 @@ Returns all models for a make/year.
 
 Returns JSON for a manual page/section.
 
-- `content` contains the rendered HTML for the current manual page.
 - `manuals` contains descendant manual links listed from the current page, which is useful for drilling down from paths such as `/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/Repair%20and%20Diagnosis/`.
 - `manuals` includes navigation links discovered from both absolute and relative `<a href>` values, including LEMON split-tree navigation pages.
 
 ```json
 {
   "title": "Repair and Diagnosis",
-  "content": "<!doctype html>...",
   "breadcrumbs": [
     { "label": "Buick", "href": "/Buick/" }
   ],

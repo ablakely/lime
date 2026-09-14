@@ -612,12 +612,6 @@ impl Lemon {
         )?;
         Ok(ManualPageResponse {
             title: breadcrumbs_to_title(&page.breadcrumbs, breadcrumbs_need_more_context_predicate),
-            content: self.page_db_bytes_to_outer_html(
-                tables_cache,
-                vehicle,
-                page,
-                page_db_bytes,
-            )?,
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&page.breadcrumbs),
             topics: breadcrumbs_to_topics(&page.breadcrumbs),
             manuals: manual_links_from_html(
