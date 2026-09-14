@@ -176,8 +176,25 @@ pub struct MakeYearResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ManualPageResponse {
     pub title: String,
-    pub content: String,
     pub breadcrumbs: Vec<ApiBreadcrumb>,
     pub topics: Vec<String>,
     pub manuals: Vec<NamedUri>,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn manual_page_json_omits_content_field() {
+        let response = ManualPageResponse {
+            title: "2012 Buick LaCrosse - Repair and Diagnosis".to_string(),
+            breadcrumbs: vec![],
+            topics: vec![],
+            manuals: vec![],
+        };
+        let value = serde_json::to_value(response).expect("manual response serializes");
+        let object = value.as_object().expect("manual response is object");
+        assert!(!object.contains_key("content"));
+    }
 }

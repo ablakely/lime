@@ -279,12 +279,6 @@ impl Charm {
         let breadcrumbs = self.page_breadcrumbs(cache, uri_path, vehicle)?;
         Ok(ManualPageResponse {
             title: breadcrumbs_to_title(&breadcrumbs, breadcrumbs_need_more_context_predicate),
-            content: add_header_and_footer(
-                &self.site_branding,
-                inner_html,
-                &breadcrumbs,
-                breadcrumbs_need_more_context_predicate,
-            ),
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&breadcrumbs),
             topics: breadcrumbs_to_topics(&breadcrumbs),
             manuals: manual_links_from_html(uri_path, inner_html),
