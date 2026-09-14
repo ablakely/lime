@@ -8,7 +8,7 @@ use serde::Deserialize;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
-    types::Year,
+    types::{ApiBreadcrumb, Year},
     uri_path::{
         AbsoluteUriPath, CarUriComponents, ServerUriPath, UriComponent, UriPath,
         car_uri_path_string_to_car_uri_components, parse_uri_path,
@@ -42,7 +42,6 @@ where
 pub fn car_breadcrumbs(uri_path: &impl UriPath) -> Vec<Breadcrumb> {
     let mut result = Vec::with_capacity(3);
     for (i, uri_component) in uri_path.dirs().iter().take(3).enumerate() {
-       
         result.push((
             uri_component.clone(),
             AbsoluteUriPath {
@@ -69,7 +68,7 @@ pub fn add_header_and_footer(
     breadcrumbs: &[Breadcrumb],
     breadcrumbs_need_more_context_predicate: impl Fn(&[Breadcrumb]) -> bool,
 ) -> String {
-    let h1_title = breadcrumbs_to_h1_title(breadcrumbs, breadcrumbs_need_more_context_predicate);
+    let h1_title = breadcrumbs_to_title(breadcrumbs, breadcrumbs_need_more_context_predicate);
     let seo_title = breadcrumbs_to_seo_title(branding, breadcrumbs, &h1_title);
     let seo_description = breadcrumbs_to_seo_description(branding, breadcrumbs);
 
@@ -119,7 +118,7 @@ fn builtin_bcs_need_more_context_predicate(bcs: &[Breadcrumb]) -> bool {
             .unwrap_or(false)
 }
 
-fn breadcrumbs_to_h1_title(
+pub fn breadcrumbs_to_title(
     mut bcs: &[Breadcrumb],
     breadcrumbs_need_more_context_predicate: impl Fn(&[Breadcrumb]) -> bool,
 ) -> String {
@@ -144,19 +143,29 @@ fn breadcrumbs_to_h1_title(
     result
 }
 
+pub fn breadcrumbs_to_api_breadcrumbs(breadcrumbs: &[Breadcrumb]) -> Vec<ApiBreadcrumb> {
+    breadcrumbs
+        .iter()
+        .map(|(label, href)| ApiBreadcrumb {
+            label: label.decode_uri_component().0.into_owned(),
+            href: String::from(href.stringify()),
+        })
+        .collect()
+}
+
 /// Precondition: breadcrumbs nonempty
 fn breadcrumbs_to_car_name(breadcrumbs: &[Breadcrumb]) -> String {
     match breadcrumbs {
         [] => panic!("Cannot call breadcrumbs_to_car_name with empty breadcrumbs"),
-       
+
         [(make, _)] => make.decode_uri_component().0.to_string(),
-       
+
         [(make, _), (year, _)] => format!(
             "{} {}",
             year.decode_uri_component().0,
             make.decode_uri_component().0
         ),
-       
+
         [(make, _), (year, _), (model, _), ..] => {
             format!(
                 "{} {} {}",
@@ -239,9 +248,6 @@ pub fn safe_a(
     href: &impl UriPath,
     content: impl HtmlDisplay,
 ) -> impl HtmlDisplay {
-   
-   
-   
     html! {
         a(class?: class, href: #(&String::from(href.stringify()))) { @(&content) }
     }
@@ -287,7 +293,7 @@ impl ImageType {
             [0x47, 0x49, 0x46, ..] => Some(Self::Gif),
             [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, ..] => Some(Self::Png),
             [255, 216, 255, ..] => Some(Self::Jpeg),
-           
+
             [60, ..] => Some(Self::Svg),
             _ => None,
         }
@@ -369,11 +375,7 @@ pub fn make_zip_static_files(
         if uri_path.is_absolute() {
             bail!("By convention you should only pass relative uris to make_zip_static_files");
         }
-       
-       
-       
-       
-       
+
         uri_path.is_absolute = true;
         zip_static_files.push((uri_path.try_into()?, included_file.contents().into()))
     }
@@ -402,7 +404,6 @@ pub fn aou_404() -> AbsoluteOriginalUri {
 pub fn car_uri_components_to_human_readable_file_name(
     car_uri_components: &CarUriComponents,
 ) -> String {
-   
     let car_human_readable_name = format!(
         "{} {} {}",
         car_uri_components[1].decode_uri_component().0,

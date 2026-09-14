@@ -4,16 +4,16 @@
 
 { config, pkgs, lib, ... }:
 
-let lemon-website = pkgs.callPackage (import ./package.nix) {};
+let lemon-apid = pkgs.callPackage (import ./package.nix) {};
     types = lib.types;
-    unixSocket = prefix: "/run/lemon-website/${prefix}.socket";
-    mergeIfEnabled = f: lib.mkMerge (lib.mapAttrsToList (prefix: cfg: lib.mkIf cfg.enable (f prefix cfg)) config.services.lemon-website);
-    anyNginxEnabled = builtins.any (s: s.nginx.enable) (builtins.attrValues config.services.lemon-website);
-    username = "lemon-website";
+    unixSocket = prefix: "/run/lemon-apid/${prefix}.socket";
+    mergeIfEnabled = f: lib.mkMerge (lib.mapAttrsToList (prefix: cfg: lib.mkIf cfg.enable (f prefix cfg)) config.services.lemon-apid);
+    anyNginxEnabled = builtins.any (s: s.nginx.enable) (builtins.attrValues config.services.lemon-apid);
+    username = "lemon-apid";
 in
 
 {
-  options.services.lemon-website = lib.mkOption {
+  options.services.lemon-apid = lib.mkOption {
     description = "Attr names are unique ids, should all be lowercase english letters to be safe.";
     default = {};
     type = types.attrsOf (types.submodule ({ config, ... }: {
@@ -21,8 +21,8 @@ in
         enable = lib.mkEnableOption "Enable LEMON website";
         package = lib.mkOption {
           type = types.package;
-          default = lemon-website;
-          description = "lemon-website package";
+          default = lemon-apid;
+          description = "lemon-apid package";
         };
         indexJsons = lib.mkOption {
           type = types.listOf types.path;
@@ -91,9 +91,9 @@ in
   ));
 
   config.systemd = mergeIfEnabled (prefix: cfg: {
-    services."lemon-website-${prefix}" = {
+    services."lemon-apid-${prefix}" = {
       script = ''
-            ${cfg.package}/bin/lemon-website \
+            ${cfg.package}/bin/lemon-apid \
               --production \
               --listen-address unix:${unixSocket prefix} \
               ${builtins.toString cfg.indexJsons} 
@@ -115,7 +115,7 @@ in
         LockPersonality = true;
       };
     };
-    tmpfiles.settings.lemon-website-run."/run/lemon-website".d = {
+    tmpfiles.settings.lemon-apid-run."/run/lemon-apid".d = {
       user = username;
       group = username;
     };

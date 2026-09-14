@@ -9,6 +9,12 @@ use anyhow::Result;
 pub mod charm;
 pub mod lemon;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseFormat {
+    Html,
+    Json,
+}
+
 pub trait DatabaseEngine: Sync + Send {
     fn machine_readable_name(&self) -> DatabaseMachineName;
     fn human_readable_name(&self) -> String;
@@ -18,6 +24,7 @@ pub trait DatabaseEngine: Sync + Send {
     fn handle_car_request(
         &self,
         uri_path: CanonicalUriPath,
+        response_format: ResponseFormat,
     ) -> Result<Option<axum::response::Response>>;
     // called inside spawn_blocking
     fn handle_bundle_request(

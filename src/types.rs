@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::common::{deserialize_car_uri_components, deserialize_years};
 use crate::uri_path::CarUriComponents;
@@ -19,8 +19,6 @@ pub struct Engine(String);
 pub struct DatabaseMachineName(pub String);
 
 impl Make {
-   
-   
     pub fn new(make: String) -> Self {
         assert!(!make.is_empty());
         Self(make)
@@ -127,4 +125,51 @@ pub enum DatabaseFileType {
     Lmdb,
     #[serde(rename = "mtbl")]
     Mtbl,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ApiBreadcrumb {
+    pub label: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RootResponse {
+    pub makes: Vec<String>,
+    pub breadcrumbs: Vec<ApiBreadcrumb>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MakeResponse {
+    pub make: String,
+    pub years: Vec<String>,
+    pub breadcrumbs: Vec<ApiBreadcrumb>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MakeYearModelResponse {
+    pub model: String,
+    pub engines: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MakeYearDatabaseResponse {
+    pub name: String,
+    pub info_html: String,
+    pub models: Vec<MakeYearModelResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MakeYearResponse {
+    pub make: String,
+    pub year: String,
+    pub databases: Vec<MakeYearDatabaseResponse>,
+    pub breadcrumbs: Vec<ApiBreadcrumb>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManualPageResponse {
+    pub title: String,
+    pub content: String,
+    pub breadcrumbs: Vec<ApiBreadcrumb>,
 }

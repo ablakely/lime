@@ -14,11 +14,12 @@ use serde::Deserialize;
 use crate::{
     common::{
         Breadcrumb, ImageType, SenderWriter, SiteBranding, aau_404, add_header_and_footer, aou_404,
-        aup_404, image_bytes_to_response, make_zip_static_files,
+        aup_404, breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, image_bytes_to_response,
+        make_zip_static_files,
     },
-    database_engines::DatabaseEngine,
+    database_engines::{DatabaseEngine, ResponseFormat},
     kv_store::{KVKey, KVStore, KVStoreCache},
-    types::{DatabaseFileType, DatabaseMachineName, IndexJson, Make, Year},
+    types::{DatabaseFileType, DatabaseMachineName, IndexJson, Make, ManualPageResponse, Year},
     uri_path::{
         AbsoluteUriPath, CanonicalUriPath, CarUriComponents, ConcretizeResult, ServerUriPath,
         UriComponent, UriPath, concretize_uri, make_breadcrumbs, parse_uri_path,
@@ -240,7 +241,22 @@ impl Charm {
         uri_path: &CanonicalUriPath,
         vehicle: &VehicleMeta,
     ) -> Result<String> {
-        let breadcrumbs = make_breadcrumbs(uri_path, &|uri_components| {
+        let breadcrumbs = self.page_breadcrumbs(cache, uri_path, vehicle)?;
+        Ok(add_header_and_footer(
+            &self.site_branding,
+            inner_html,
+            &breadcrumbs,
+            breadcrumbs_need_more_context_predicate,
+        ))
+    }
+
+    fn page_breadcrumbs(
+        &self,
+        cache: &KVStoreCache,
+        uri_path: &CanonicalUriPath,
+        vehicle: &VehicleMeta,
+    ) -> Result<Vec<Breadcrumb>> {
+        make_breadcrumbs(uri_path, &|uri_components| {
             Ok(self
                 .retrieve_page_1(
                     cache,
@@ -250,13 +266,27 @@ impl Charm {
                     },
                 )?
                 .is_some())
-        })?;
-        Ok(add_header_and_footer(
-            &self.site_branding,
-            inner_html,
-            &breadcrumbs,
-            breadcrumbs_need_more_context_predicate,
-        ))
+        })
+    }
+
+    fn page_string_to_json(
+        &self,
+        cache: &KVStoreCache,
+        inner_html: &str,
+        uri_path: &CanonicalUriPath,
+        vehicle: &VehicleMeta,
+    ) -> Result<ManualPageResponse> {
+        let breadcrumbs = self.page_breadcrumbs(cache, uri_path, vehicle)?;
+        Ok(ManualPageResponse {
+            title: breadcrumbs_to_title(&breadcrumbs, breadcrumbs_need_more_context_predicate),
+            content: add_header_and_footer(
+                &self.site_branding,
+                inner_html,
+                &breadcrumbs,
+                breadcrumbs_need_more_context_predicate,
+            ),
+            breadcrumbs: breadcrumbs_to_api_breadcrumbs(&breadcrumbs),
+        })
     }
 
     fn determine_adjust_ctx(
@@ -313,6 +343,7 @@ impl DatabaseEngine for Charm {
     fn handle_car_request(
         &self,
         uri_path: CanonicalUriPath,
+        response_format: ResponseFormat,
     ) -> Result<Option<axum::response::Response>> {
         if let Some(uri_path_with_canonical_make) = canonicalize_make_in_uri_path(&uri_path)? {
             return Ok(Some(
@@ -334,9 +365,19 @@ impl DatabaseEngine for Charm {
             .ok_or_else(|| anyhow!("Got bundle request for missing car"))?;
         if let Some(offset) = self.retrieve_page_1(&cache, vehicle, &uri_path)? {
             let inner_html = self.retrieve_page_2(&cache, offset)?;
-            let outer_html =
-                self.page_string_to_outer_html(&cache, &inner_html, &uri_path, vehicle)?;
-            Ok(Some(axum::response::Html(outer_html).into_response()))
+            Ok(Some(match response_format {
+                ResponseFormat::Html => axum::response::Html(self.page_string_to_outer_html(
+                    &cache,
+                    &inner_html,
+                    &uri_path,
+                    vehicle,
+                )?)
+                .into_response(),
+                ResponseFormat::Json => {
+                    axum::Json(self.page_string_to_json(&cache, &inner_html, &uri_path, vehicle)?)
+                        .into_response()
+                }
+            }))
         } else {
             Ok(None)
         }
