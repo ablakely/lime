@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/home/ab/lime/target/release/build/mime_guess-5df9222688a5ce05/out/mime_types_generated.rs
