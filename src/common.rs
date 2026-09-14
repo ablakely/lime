@@ -172,20 +172,11 @@ pub fn manual_links_from_html(current_uri: &CanonicalUriPath, html: &str) -> Vec
     let mut links = Vec::new();
     for captures in A_HREF_REGEX.captures_iter(html) {
         let href = captures.get(1).unwrap().as_str();
-        if !href.starts_with('/') {
-            continue;
-        }
-        let Ok(parsed_href) = parse_uri_path(href) else {
+        let Some(resolved_href) = resolve_manual_href(current_uri, href) else {
             continue;
         };
-        let Ok((parsed_href, _)) = parsed_href.reencode_properly() else {
-            continue;
-        };
-        if parsed_href.file.is_some() || !parsed_href.is_absolute {
-            continue;
-        }
-        if parsed_href.dirs.len() <= current_uri.dirs.len()
-            || !parsed_href.dirs.starts_with(current_uri.dirs())
+        if resolved_href.dirs.len() <= current_uri.dirs.len()
+            || !resolved_href.dirs.starts_with(current_uri.dirs())
         {
             continue;
         }
@@ -194,15 +185,40 @@ pub fn manual_links_from_html(current_uri: &CanonicalUriPath, html: &str) -> Vec
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
-        if label.is_empty() || links.iter().any(|link: &NamedUri| link.uri == href) {
+        let resolved_href = resolved_href.stringify().to_string();
+        if label.is_empty() || links.iter().any(|link: &NamedUri| link.uri == resolved_href) {
             continue;
         }
         links.push(NamedUri {
             name: label,
-            uri: href.to_string(),
+            uri: resolved_href,
         });
     }
     links
+}
+
+fn resolve_manual_href(current_uri: &CanonicalUriPath, href: &str) -> Option<CanonicalUriPath> {
+    let parsed_href = parse_uri_path(href).ok()?;
+    let (parsed_href, _) = parsed_href.reencode_properly().ok()?;
+    if parsed_href.file.is_some() {
+        return None;
+    }
+    let dirs = if parsed_href.is_absolute {
+        parsed_href.dirs
+    } else {
+        let mut dirs = current_uri.dirs.clone();
+        for dir in parsed_href.dirs {
+            match dir.as_str() {
+                "." => {}
+                ".." => {
+                    dirs.pop()?;
+                }
+                _ => dirs.push(dir),
+            }
+        }
+        dirs
+    };
+    Some(CanonicalUriPath { dirs })
 }
 
 /// Precondition: breadcrumbs nonempty
@@ -404,6 +420,36 @@ mod test {
                 name: "Engine".to_string(),
                 uri: "/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/Repair%20and%20Diagnosis/Engine/".to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn manual_links_from_html_resolves_relative_navigation_links() {
+        let current_uri = CanonicalUriPath {
+            dirs: vec![
+                UriComponent::unsafe_from_encoded_str("Buick"),
+                UriComponent::unsafe_from_encoded_str("2012"),
+                UriComponent::unsafe_from_encoded_str("LaCrosse%20Leather%2C%202.4L%20Eng%20VIN%20R"),
+                UriComponent::unsafe_from_encoded_str("Repair%20and%20Diagnosis"),
+            ],
+        };
+        let html = r#"
+            <a href="../Repair%20and%20Diagnosis%20%28Single%20Page%29/">View "full tree" with all links on one page</a>
+            <a href="Quick%20Lookups/DTC%20Index/">DTC Index</a>
+            <a href="Transmission/Automatic%20Trans/">Automatic Trans</a>
+        "#;
+        assert_eq!(
+            manual_links_from_html(&current_uri, html),
+            vec![
+                NamedUri {
+                    name: "DTC Index".to_string(),
+                    uri: "/Buick/2012/LaCrosse%20Leather%2C%202.4L%20Eng%20VIN%20R/Repair%20and%20Diagnosis/Quick%20Lookups/DTC%20Index/".to_string(),
+                },
+                NamedUri {
+                    name: "Automatic Trans".to_string(),
+                    uri: "/Buick/2012/LaCrosse%20Leather%2C%202.4L%20Eng%20VIN%20R/Repair%20and%20Diagnosis/Transmission/Automatic%20Trans/".to_string(),
+                }
+            ]
         );
     }
 }
