@@ -160,7 +160,11 @@ impl Indices {
         Some(MakeYearResponse {
             models: models
                 .into_iter()
-                .map(|(model, engines)| MakeYearModelResponse { model, engines })
+                .map(|(model, engines)| MakeYearModelResponse {
+                    model,
+                    uri: (engines.len() == 1).then(|| engines[0].uri.clone()),
+                    engines,
+                })
                 .collect(),
         })
     }
@@ -337,6 +341,7 @@ mod test {
             .expect("expected make/year json");
         assert_eq!(response.models.len(), 2);
         assert_eq!(response.models[0].model, "Camry");
+        assert_eq!(response.models[0].uri, None);
         assert_eq!(
             response.models[0].engines,
             vec![
@@ -355,6 +360,7 @@ mod test {
             ]
         );
         assert_eq!(response.models[1].model, "Corolla");
+        assert_eq!(response.models[1].uri, Some("/Toyota/2022/Corolla/".to_string()));
         assert_eq!(
             vec![
                 EngineUri {

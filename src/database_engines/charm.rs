@@ -15,7 +15,7 @@ use crate::{
     common::{
         Breadcrumb, ImageType, SenderWriter, SiteBranding, aau_404, add_header_and_footer, aou_404,
         aup_404, breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, breadcrumbs_to_topics,
-        image_bytes_to_response, make_zip_static_files,
+        image_bytes_to_response, make_zip_static_files, manual_links_from_html,
     },
     database_engines::{DatabaseEngine, ResponseFormat},
     kv_store::{KVKey, KVStore, KVStoreCache},
@@ -287,6 +287,7 @@ impl Charm {
             ),
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&breadcrumbs),
             topics: breadcrumbs_to_topics(&breadcrumbs),
+            manuals: manual_links_from_html(uri_path, inner_html),
         })
     }
 

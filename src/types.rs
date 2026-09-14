@@ -154,6 +154,7 @@ pub struct EngineUri {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MakeYearModelResponse {
     pub model: String,
+    pub uri: Option<String>,
     pub engines: Vec<EngineUri>,
 }
 
@@ -178,4 +179,5 @@ pub struct ManualPageResponse {
     pub content: String,
     pub breadcrumbs: Vec<ApiBreadcrumb>,
     pub topics: Vec<String>,
+    pub manuals: Vec<NamedUri>,
 }

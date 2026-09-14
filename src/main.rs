@@ -2,7 +2,6 @@ mod common;
 mod database_engines;
 mod indexing;
 mod kv_store;
-mod navigation_worker;
 mod not_found_layer_adapter;
 mod types;
 mod uri_path;
@@ -31,7 +30,6 @@ use crate::database_engines::charm::Charm;
 use crate::database_engines::lemon::Lemon;
 use crate::database_engines::{DatabaseEngine, ResponseFormat};
 use crate::indexing::Indices;
-use crate::navigation_worker::{NavigationRequest, NavigationWorker};
 use crate::not_found_layer_adapter::NotFoundLayerAdapter;
 use crate::types::{IndexJsonCommon, Make, Year};
 use crate::uri_path::{CanonicalUriPath, ServerUriPath, UriComponent, UriPath, parse_uri_path};
@@ -252,7 +250,6 @@ async fn main() -> Result<()> {
         }
     }
     let indices = Arc::new(indices_mut);
-    let navigation_worker = Arc::new(NavigationWorker::default());
     let serve_dir_service = tower_serve_static::ServeDir::new(&HTML_DIR);
     let serve_dir_layer = NotFoundLayerAdapter::new(serve_dir_service);
     let mut default_headers = axum::http::HeaderMap::new();
@@ -315,7 +312,18 @@ async fn main() -> Result<()> {
                 }
                 Ok(u) => u,
             };
-            let (canonical_uri_path, ncr) = server_uri_path.canonicalize();
+            let html_manual_endpoint = server_uri_path
+                .file()
+                .map(|file| file.as_str().eq_ignore_ascii_case("index.html"))
+                .unwrap_or(false);
+            let manual_endpoint_uri_path = CanonicalUriPath {
+                dirs: server_uri_path.dirs().to_vec(),
+            };
+            let (canonical_uri_path, ncr) = if html_manual_endpoint {
+                (manual_endpoint_uri_path.clone(), false)
+            } else {
+                server_uri_path.canonicalize()
+            };
             needs_canonical_redirect |= ncr;
             if needs_canonical_redirect {
                 return axum::response::Redirect::permanent(&String::from(
@@ -426,70 +434,34 @@ async fn main() -> Result<()> {
                         _ => (StatusCode::METHOD_NOT_ALLOWED, "what u up to?").into_response()
                     }
                 }
-                [] => {
-                    let navigation_worker = navigation_worker.clone();
-                    let indices = indices.clone();
-                    match tokio::task::spawn_blocking(move || {
-                        navigation_worker
-                            .handle_request(&indices, NavigationRequest::Root)
-                            .unwrap_or_else(|e| {
-                                Some(response_500(e.context("navigation worker failed at root")))
-                            })
-                            .unwrap_or_else(response_404)
-                    })
-                    .await
-                    {
-                        Ok(response) => response,
-                        Err(err) => response_500(format!(
-                            "navigation worker join error at root: {err}"
-                        )),
-                    }
-                }
+                [] => axum::Json(indices.root_json()).into_response(),
                 [make_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
-                    let navigation_worker = navigation_worker.clone();
-                    let indices = indices.clone();
-                    match tokio::task::spawn_blocking(move || {
-                        navigation_worker
-                            .handle_request(&indices, NavigationRequest::Make(make))
-                            .unwrap_or_else(|e| {
-                                Some(response_500(e.context("navigation worker failed at make")))
-                            })
-                            .unwrap_or_else(response_404)
-                    })
-                    .await
-                    {
-                        Ok(response) => response,
-                        Err(err) => response_500(format!(
-                            "navigation worker join error at make: {err}"
-                        )),
+                    match indices.make_json(&make) {
+                        Some(response) => axum::Json(response).into_response(),
+                        None => response_404(),
                     }
                 }
                 [make_str, year_str] => {
                     let make = Make::new(make_str.decode_uri_component().0.to_string());
                     let year = Year::new(year_str.decode_uri_component().0.to_string());
-                    let navigation_worker = navigation_worker.clone();
-                    let indices = indices.clone();
-                    match tokio::task::spawn_blocking(move || {
-                        navigation_worker
-                            .handle_request(&indices, NavigationRequest::MakeYear(make, year))
-                            .unwrap_or_else(|e| {
-                                Some(response_500(
-                                    e.context("navigation worker failed at make/year"),
-                                ))
-                            })
-                            .unwrap_or_else(response_404)
-                    })
-                    .await
-                    {
-                        Ok(response) => response,
-                        Err(err) => response_500(format!(
-                            "navigation worker join error at make/year: {err}"
-                        )),
+                    match indices.make_year_json(&make, &year) {
+                        Some(response) => axum::Json(response).into_response(),
+                        None => response_404(),
                     }
                 }
                 _ => {
-                    let car_uri_components = &canonical_uri_path
+                    let response_format = if html_manual_endpoint {
+                        ResponseFormat::Html
+                    } else {
+                        ResponseFormat::Json
+                    };
+                    let request_uri_path = if html_manual_endpoint {
+                        manual_endpoint_uri_path
+                    } else {
+                        canonical_uri_path
+                    };
+                    let car_uri_components = &request_uri_path
                         .extract_car_uri_components()
                         .expect("Guaranteed to have at least three parts in this match branch");
                     let matched_database =
@@ -499,7 +471,7 @@ async fn main() -> Result<()> {
                         };
                     tokio::task::spawn_blocking(move || {
                         matched_database
-                            .handle_car_request(canonical_uri_path, ResponseFormat::Html)
+                            .handle_car_request(request_uri_path, response_format)
                             .unwrap_or_else(|e| {
                                 Some(response_500(e.context("Handle car request error")))
                             })

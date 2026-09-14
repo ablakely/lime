@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::common::{
     Breadcrumb, ImageType, SenderWriter, SiteBranding, aau_404, add_header_and_footer, aou_404,
     breadcrumbs_to_api_breadcrumbs, breadcrumbs_to_title, breadcrumbs_to_topics, english_list,
-    get_or_compute, image_bytes_to_response, make_zip_static_files,
+    get_or_compute, image_bytes_to_response, make_zip_static_files, manual_links_from_html,
 };
 use crate::database_engines::{DatabaseEngine, ResponseFormat};
 use crate::kv_store::{KVKey, KVStore, KVStoreCache};
@@ -604,6 +604,12 @@ impl Lemon {
         page: &Page,
         page_db_bytes: &[u8],
     ) -> Result<ManualPageResponse> {
+        let page_db_string = String::from_utf8_lossy(page_db_bytes);
+        let replaced_links_html = self.replace_links(
+            tables_cache,
+            vehicle,
+            &page_db_string,
+        )?;
         Ok(ManualPageResponse {
             title: breadcrumbs_to_title(&page.breadcrumbs, breadcrumbs_need_more_context_predicate),
             content: self.page_db_bytes_to_outer_html(
@@ -614,6 +620,16 @@ impl Lemon {
             )?,
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&page.breadcrumbs),
             topics: breadcrumbs_to_topics(&page.breadcrumbs),
+            manuals: manual_links_from_html(
+                &CanonicalUriPath {
+                    dirs: page
+                        .breadcrumbs
+                        .iter()
+                        .map(|(label, _)| label.clone())
+                        .collect(),
+                },
+                replaced_links_html.as_ref(),
+            ),
         })
     }
 
