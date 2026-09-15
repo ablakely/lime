@@ -605,11 +605,7 @@ impl Lemon {
         page_db_bytes: &[u8],
     ) -> Result<ManualPageResponse> {
         let page_db_string = String::from_utf8_lossy(page_db_bytes);
-        let replaced_links_html = self.replace_links(
-            tables_cache,
-            vehicle,
-            &page_db_string,
-        )?;
+        let replaced_links_html = self.replace_links(tables_cache, vehicle, &page_db_string)?;
         let content = page
             .info
             .as_ref()

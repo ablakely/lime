@@ -197,6 +197,9 @@ mod test {
         };
         let value = serde_json::to_value(response).expect("manual response serializes");
         let object = value.as_object().expect("manual response is object");
-        assert_eq!(object.get("content"), Some(&serde_json::json!("<p>content</p>")));
+        assert_eq!(
+            object.get("content"),
+            Some(&serde_json::json!("<p>content</p>"))
+        );
     }
 }
