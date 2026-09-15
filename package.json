@@ -1,0 +1,23 @@
+{
+  "name": "lime-frontend",
+  "version": "1.0.0",
+  "description": "Node.js frontend for LEMON manuals API with Bootstrap UI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://localhost:26831/ablakely/lime-frontend"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
