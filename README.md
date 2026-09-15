@@ -20,6 +20,13 @@ This project uses manual datasets from:
 - `lemon-apid` — Rust backend/API server
 - `lime-frontend` — frontend submodule
 
+## lime-frontend
+
+The frontend for this project lives in a separate repository and is included here as a git submodule.
+
+- Repository: https://github.com/ablakely/lime-frontend
+- Local path in this repo: `lime-frontend`
+
 ## Getting started
 
 1. Clone the repository.
