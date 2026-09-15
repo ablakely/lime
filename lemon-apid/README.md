@@ -1,5 +1,4 @@
-# lime
+# lemon-apid
 
-lemon-manuals.la server modification and new frontend
-
+lemon-manuals.la server converted into a JSON REST API
 
