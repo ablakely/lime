@@ -17,8 +17,8 @@ This project uses manual datasets from:
 
 ## Repository layout
 
-- `lemon-apid` — modified LEMON webserver used as a JSON REST API
-- `lime-frontend` — frontend submodule
+- `lemon-apid` — modified LEMON Rust webserver used as a JSON REST API
+- `lime-frontend` — frontend web app written in node.js
 
 ## lime-frontend
 
