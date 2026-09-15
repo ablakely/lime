@@ -68,6 +68,7 @@ Returns JSON for a manual page/section.
     { "label": "Buick", "href": "/Buick/" }
   ],
   "topics": ["Repair and Diagnosis"],
+  "content": "<p>Manual page HTML content</p>",
   "manuals": [
     {
       "name": "Engine",

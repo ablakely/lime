@@ -281,6 +281,7 @@ impl Charm {
             title: breadcrumbs_to_title(&breadcrumbs, breadcrumbs_need_more_context_predicate),
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&breadcrumbs),
             topics: breadcrumbs_to_topics(&breadcrumbs),
+            content: inner_html.to_string(),
             manuals: manual_links_from_html(uri_path, inner_html),
         })
     }
