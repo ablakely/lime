@@ -1,0 +1,3 @@
+[submodule "lime-frontend"]
+	path = lime-frontend
+	url = git@github.com:ablakely/lime-frontend.git
