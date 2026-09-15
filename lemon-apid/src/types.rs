@@ -149,12 +149,14 @@ pub struct YearUri {
 pub struct EngineUri {
     pub name: String,
     pub uri: String,
+    pub database: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MakeYearModelResponse {
     pub model: String,
     pub uri: Option<String>,
+    pub database: Option<String>,
     pub engines: Vec<EngineUri>,
 }
 
