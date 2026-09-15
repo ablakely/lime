@@ -149,12 +149,14 @@ pub struct YearUri {
 pub struct EngineUri {
     pub name: String,
     pub uri: String,
+    pub database: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MakeYearModelResponse {
     pub model: String,
     pub uri: Option<String>,
+    pub database: Option<String>,
     pub engines: Vec<EngineUri>,
 }
 
@@ -178,6 +180,7 @@ pub struct ManualPageResponse {
     pub title: String,
     pub breadcrumbs: Vec<ApiBreadcrumb>,
     pub topics: Vec<String>,
+    pub content: String,
     pub manuals: Vec<NamedUri>,
 }
 
@@ -186,15 +189,19 @@ mod test {
     use super::*;
 
     #[test]
-    fn manual_page_json_omits_content_field() {
+    fn manual_page_json_includes_content_field() {
         let response = ManualPageResponse {
             title: "2012 Buick LaCrosse - Repair and Diagnosis".to_string(),
             breadcrumbs: vec![],
             topics: vec![],
+            content: "<p>content</p>".to_string(),
             manuals: vec![],
         };
         let value = serde_json::to_value(response).expect("manual response serializes");
         let object = value.as_object().expect("manual response is object");
-        assert!(!object.contains_key("content"));
+        assert_eq!(
+            object.get("content"),
+            Some(&serde_json::json!("<p>content</p>"))
+        );
     }
 }

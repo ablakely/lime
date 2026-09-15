@@ -33,7 +33,9 @@ Returns all years for a make.
 Returns all models for a make/year.
 
 - `uri` is present when the model has exactly one direct manual root.
+- `database` is present when the model has exactly one direct manual root.
 - `engines[*].uri` always contains the manual root URL to use next.
+- `engines[*].database` identifies which backing database that manual comes from.
 
 ```json
 {
@@ -41,10 +43,12 @@ Returns all models for a make/year.
     {
       "model": "LaCrosse",
       "uri": null,
+      "database": null,
       "engines": [
         {
           "name": "Leather, 3.6L Eng VIN 3",
-          "uri": "/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/"
+          "uri": "/Buick/2012/LaCrosse%20Leather%2C%203.6L%20Eng%20VIN%203/",
+          "database": "lemon"
         }
       ]
     }
@@ -68,6 +72,7 @@ Returns JSON for a manual page/section.
     { "label": "Buick", "href": "/Buick/" }
   ],
   "topics": ["Repair and Diagnosis"],
+  "content": "<p>Manual page HTML content</p>",
   "manuals": [
     {
       "name": "Engine",

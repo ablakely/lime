@@ -605,15 +605,18 @@ impl Lemon {
         page_db_bytes: &[u8],
     ) -> Result<ManualPageResponse> {
         let page_db_string = String::from_utf8_lossy(page_db_bytes);
-        let replaced_links_html = self.replace_links(
-            tables_cache,
-            vehicle,
-            &page_db_string,
-        )?;
+        let replaced_links_html = self.replace_links(tables_cache, vehicle, &page_db_string)?;
+        let content = page
+            .info
+            .as_ref()
+            .map(page_info_to_warning_html)
+            .unwrap_or_default()
+            + replaced_links_html.as_ref();
         Ok(ManualPageResponse {
             title: breadcrumbs_to_title(&page.breadcrumbs, breadcrumbs_need_more_context_predicate),
             breadcrumbs: breadcrumbs_to_api_breadcrumbs(&page.breadcrumbs),
             topics: breadcrumbs_to_topics(&page.breadcrumbs),
+            content,
             manuals: manual_links_from_html(
                 &CanonicalUriPath {
                     dirs: page

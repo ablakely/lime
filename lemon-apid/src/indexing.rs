@@ -140,19 +140,23 @@ impl Indices {
         });
 
         let mut models = BTreeMap::<String, Vec<EngineUri>>::new();
-        for (_, models_map) in dbs_and_models {
+        for (db_engine, models_map) in dbs_and_models {
+            let database = db_engine.machine_readable_name().0;
             for (model, engines_map) in models_map {
                 models
                     .entry(model.as_ref().to_string())
                     .or_default()
-                    .extend(engines_map.iter().map(|(engine, car_uri_components)| EngineUri {
-                        name: engine
-                            .as_ref()
-                            .map(|engine| engine.as_ref().to_string())
-                            .unwrap_or_else(|| model.as_ref().to_string()),
-                        uri: String::from(
-                            car_uri_components_to_uri_path(car_uri_components).stringify(),
-                        ),
+                    .extend(engines_map.iter().map(|(engine, car_uri_components)| {
+                        EngineUri {
+                            name: engine
+                                .as_ref()
+                                .map(|engine| engine.as_ref().to_string())
+                                .unwrap_or_else(|| model.as_ref().to_string()),
+                            uri: String::from(
+                                car_uri_components_to_uri_path(car_uri_components).stringify(),
+                            ),
+                            database: database.clone(),
+                        }
                     }));
             }
         }
@@ -163,6 +167,7 @@ impl Indices {
                 .map(|(model, engines)| MakeYearModelResponse {
                     model,
                     uri: (engines.len() == 1).then(|| engines[0].uri.clone()),
+                    database: (engines.len() == 1).then(|| engines[0].database.clone()),
                     engines,
                 })
                 .collect(),
@@ -342,32 +347,39 @@ mod test {
         assert_eq!(response.models.len(), 2);
         assert_eq!(response.models[0].model, "Camry");
         assert_eq!(response.models[0].uri, None);
+        assert_eq!(response.models[0].database, None);
         assert_eq!(
             response.models[0].engines,
             vec![
                 EngineUri {
                     name: "2.5L".to_string(),
                     uri: "/Toyota/2022/Camry/".to_string(),
+                    database: "lemon".to_string(),
                 },
                 EngineUri {
                     name: "Hybrid".to_string(),
                     uri: "/Toyota/2022/Camry%20Hybrid/".to_string(),
+                    database: "lemon".to_string(),
                 },
                 EngineUri {
                     name: "3.0L".to_string(),
                     uri: "/Toyota/2022/Camry%203.0L/".to_string(),
+                    database: "charm2".to_string(),
                 },
             ]
         );
         assert_eq!(response.models[1].model, "Corolla");
-        assert_eq!(response.models[1].uri, Some("/Toyota/2022/Corolla/".to_string()));
         assert_eq!(
-            vec![
-                EngineUri {
-                    name: "Corolla".to_string(),
-                    uri: "/Toyota/2022/Corolla/".to_string(),
-                },
-            ],
+            response.models[1].uri,
+            Some("/Toyota/2022/Corolla/".to_string())
+        );
+        assert_eq!(response.models[1].database, Some("charm".to_string()));
+        assert_eq!(
+            vec![EngineUri {
+                name: "Corolla".to_string(),
+                uri: "/Toyota/2022/Corolla/".to_string(),
+                database: "charm".to_string(),
+            },],
             response.models[1].engines
         );
     }
