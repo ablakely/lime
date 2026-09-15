@@ -1,6 +1,6 @@
 # lime
 
-`lime` is an open-source project for serving and exploring automotive repair manuals using data from LEMON and CHARM.
+`lime` is a replacement frontend for LEMON/CHARM that adds quality-of-life features such as page filtering and a faster, easier UI/UX.
 
 ## Data sources
 
@@ -17,7 +17,7 @@ This project uses manual datasets from:
 
 ## Repository layout
 
-- `lemon-apid` — Rust backend/API server
+- `lemon-apid` — modified LEMON webserver used as a JSON REST API
 - `lime-frontend` — frontend submodule
 
 ## lime-frontend
