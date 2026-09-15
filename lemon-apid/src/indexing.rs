@@ -146,15 +146,17 @@ impl Indices {
                 models
                     .entry(model.as_ref().to_string())
                     .or_default()
-                    .extend(engines_map.iter().map(|(engine, car_uri_components)| EngineUri {
-                        name: engine
-                            .as_ref()
-                            .map(|engine| engine.as_ref().to_string())
-                            .unwrap_or_else(|| model.as_ref().to_string()),
-                        uri: String::from(
-                            car_uri_components_to_uri_path(car_uri_components).stringify(),
-                        ),
-                        database: database.clone(),
+                    .extend(engines_map.iter().map(|(engine, car_uri_components)| {
+                        EngineUri {
+                            name: engine
+                                .as_ref()
+                                .map(|engine| engine.as_ref().to_string())
+                                .unwrap_or_else(|| model.as_ref().to_string()),
+                            uri: String::from(
+                                car_uri_components_to_uri_path(car_uri_components).stringify(),
+                            ),
+                            database: database.clone(),
+                        }
                     }));
             }
         }
@@ -367,16 +369,17 @@ mod test {
             ]
         );
         assert_eq!(response.models[1].model, "Corolla");
-        assert_eq!(response.models[1].uri, Some("/Toyota/2022/Corolla/".to_string()));
+        assert_eq!(
+            response.models[1].uri,
+            Some("/Toyota/2022/Corolla/".to_string())
+        );
         assert_eq!(response.models[1].database, Some("charm".to_string()));
         assert_eq!(
-            vec![
-                EngineUri {
-                    name: "Corolla".to_string(),
-                    uri: "/Toyota/2022/Corolla/".to_string(),
-                    database: "charm".to_string(),
-                },
-            ],
+            vec![EngineUri {
+                name: "Corolla".to_string(),
+                uri: "/Toyota/2022/Corolla/".to_string(),
+                database: "charm".to_string(),
+            },],
             response.models[1].engines
         );
     }
